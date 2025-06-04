@@ -752,12 +752,14 @@ ${problemInfo.example_output || "No example output provided."}
 LANGUAGE: ${language}
 
 I need the response in the following format:
-1. Code: A clean, optimized implementation in ${language}
-2. Your Thoughts: A list of key insights and reasoning behind your approach
+1. Code: A clean, optimized implementation in ${language}.
+2. Your Thoughts: A list of key insights and reasoning behind your approach.
 3. Time complexity: O(X) with a detailed explanation (at least 2 sentences)
 4. Space complexity: O(X) with a detailed explanation (at least 2 sentences)
 
-For complexity explanations, please be thorough. For example: "Time complexity: O(n) because we iterate through the array only once. This is optimal as we need to examine each element at least once to find the solution." or "Space complexity: O(n) because in the worst case, we store all elements in the hashmap. The additional space scales linearly with the input size."
+For complexity explanations:
+- Time complexity should include a breakdown of any major top-level operations such as loops, recursion, sorting, or data structure operations. Explain how often each one runs and why they contribute to the overall time complexity. Avoid vague summaries—be precise about what drives the cost.
+- Space complexity should explain all additional memory used beyond the input, including any data structures, caches, recursion stacks, etc. If space is constant, state why it does not grow with input size. If it's linear or more, clarify which parts of the algorithm are responsible.
 
 Your solution should be efficient, well-commented, and handle edge cases.
 `;
@@ -912,41 +914,71 @@ Your solution should be efficient, well-commented, and handle edge cases.
         }
       }
       
-      // Extract complexity information
-      const timeComplexityPattern = /Time complexity:?\s*([^\n]+(?:\n[^\n]+)*?)(?=\n\s*(?:Space complexity|$))/i;
-      const spaceComplexityPattern = /Space complexity:?\s*([^\n]+(?:\n[^\n]+)*?)(?=\n\s*(?:[A-Z]|$))/i;
+
+  
+      // Regex patterns to capture Time and Space Complexity sections.
+      // These patterns account for optional numbering (e.g., "3."), optional markdown bolding (e.g., "**Time Complexity**"),
+      // and ensure that captured content preserves internal newlines.
+
+      // Matches "Time Complexity:" (case-insensitive), possibly numbered and/or bolded.
+      // Captures everything until "Space Complexity:" (similarly formatted) or end of string.
+      const timeComplexityPattern = /(?:^|\n)[ \t]*(?:\d+\.\s*)?(?:\*\*)?Time\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:^|\n)[ \t]*(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?|$)/i;
       
-      let timeComplexity = "O(n) - Linear time complexity because we only iterate through the array once. Each element is processed exactly one time, and the hashmap lookups are O(1) operations.";
-      let spaceComplexity = "O(n) - Linear space complexity because we store elements in the hashmap. In the worst case, we might need to store all elements before finding the solution pair.";
-      
+      // Matches "Space Complexity:" (case-insensitive), possibly numbered and/or bolded.
+      // Captures everything until the next distinct section header line or end of string.
+      // A "distinct section header line" is one that primarily consists of a title-like text (e.g., "5. Conclusion", "**Notes:**"),
+      // optionally numbered/bolded, and is followed by a newline or end of string.
+      const spaceComplexityPattern = /(?:^|\n)[ \t]*(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:(?:^|\n)[ \t]*(?:(?:\d+\.\s*)?(?:\*\*)?[A-Z][A-Za-z0-9\s,'()\-]{1,80}(?:\*\*)?:?)\s*(?:\n|$))|$)/i;
+
+      let timeComplexity = "Time-Error.";
+      let spaceComplexity = "Space-Error";
+
+      console.log("Response Content for complexity parsing:", responseContent);
+
       const timeMatch = responseContent.match(timeComplexityPattern);
       if (timeMatch && timeMatch[1]) {
-        timeComplexity = timeMatch[1].trim();
+        // Preserve line breaks and trim only leading/trailing whitespace from the captured block
+        timeComplexity = timeMatch[1].replace(/\r\n/g, '\n').trim();
+        // If no O(...) notation, prepend O(n) -
         if (!timeComplexity.match(/O\([^)]+\)/i)) {
           timeComplexity = `O(n) - ${timeComplexity}`;
-        } else if (!timeComplexity.includes('-') && !timeComplexity.includes('because')) {
+        } else if (!timeComplexity.includes('-') && !timeComplexity.match(/because|driven by|due to|as|for example|where|which is|since|meaning/i)) {
+          // If O(...) is present but no dash or common explanation keyword, add a dash
+          // This helps format entries like "O(N) The algorithm iterates once." to "O(N) - The algorithm iterates once."
           const notationMatch = timeComplexity.match(/O\([^)]+\)/i);
           if (notationMatch) {
             const notation = notationMatch[0];
-            const rest = timeComplexity.replace(notation, '').trim();
-            timeComplexity = `${notation} - ${rest}`;
+            const rest = timeComplexity.substring(notation.length).trim();
+            if (rest && !rest.startsWith('-')) {
+                 timeComplexity = `${notation} - ${rest}`;
+            } else if (!rest) { // Only notation was present
+                 timeComplexity = `${notation} - Explanation needed`;
+            }
           }
         }
+      } else {
+        console.warn("Could not parse Time Complexity from response.");
       }
-      
+
       const spaceMatch = responseContent.match(spaceComplexityPattern);
       if (spaceMatch && spaceMatch[1]) {
-        spaceComplexity = spaceMatch[1].trim();
+        spaceComplexity = spaceMatch[1].replace(/\r\n/g, '\n').trim();
         if (!spaceComplexity.match(/O\([^)]+\)/i)) {
           spaceComplexity = `O(n) - ${spaceComplexity}`;
-        } else if (!spaceComplexity.includes('-') && !spaceComplexity.includes('because')) {
+        } else if (!spaceComplexity.includes('-') && !spaceComplexity.match(/because|driven by|due to|as|for example|where|which is|since|meaning/i)) {
           const notationMatch = spaceComplexity.match(/O\([^)]+\)/i);
           if (notationMatch) {
             const notation = notationMatch[0];
-            const rest = spaceComplexity.replace(notation, '').trim();
-            spaceComplexity = `${notation} - ${rest}`;
+            const rest = spaceComplexity.substring(notation.length).trim();
+             if (rest && !rest.startsWith('-')) {
+                 spaceComplexity = `${notation} - ${rest}`;
+            } else if (!rest) {
+                 spaceComplexity = `${notation} - Explanation needed`;
+            }
           }
         }
+      } else {
+        console.warn("Could not parse Space Complexity from response.");
       }
 
       const formattedResponse = {
