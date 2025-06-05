@@ -494,19 +494,21 @@ export class ProcessingHelper {
           }
         ];
 
-        // Send to OpenAI Vision API
+        // Send to OpenAI Vision API with response_format for JSON
         const extractionResponse = await this.openaiClient.chat.completions.create({
           model: config.extractionModel || "gpt-4o",
           messages: messages,
           max_tokens: 4000,
-          temperature: 0.2
+          temperature: 0.2,
+          response_format: { type: "json_object" }
         });
 
         // Parse the response
         try {
+          // With response_format: { type: "json_object" }, OpenAI should return valid JSON directly
           const responseText = extractionResponse.choices[0].message.content;
-          // Handle when OpenAI might wrap the JSON in markdown code blocks
-          const jsonText = responseText.replace(/```json|```/g, '').trim();
+          // Defensive: Sometimes OpenAI still wraps in code blocks, so strip if present
+          const jsonText = responseText.replace(/^\s*```(?:json)?|```\s*$/g, '').trim();
           problemInfo = JSON.parse(jsonText);
         } catch (error) {
           console.error("Error parsing OpenAI response:", error);
@@ -515,6 +517,8 @@ export class ProcessingHelper {
             error: "Failed to parse problem information. Please try again or use clearer screenshots."
           };
         }
+
+        
       } else if (config.apiProvider === "gemini")  {
         // Use Gemini API
         if (!this.geminiApiKey) {
@@ -544,7 +548,7 @@ export class ProcessingHelper {
           ];
 
           // Make API request to Gemini
-          const response = await axios.default.post(
+                    const response = await axios.default.post(
             `https://generativelanguage.googleapis.com/v1beta/models/${config.extractionModel || "gemini-2.0-flash"}:generateContent?key=${this.geminiApiKey}`,
             {
               contents: geminiMessages,
@@ -913,38 +917,36 @@ Your solution should be efficient, well-commented, and handle edge cases.
             .filter(Boolean);
         }
       }
-      
-
+      console.log("Thoughts:", thoughts);
   
-      // Regex patterns to capture Time and Space Complexity sections.
-      // These patterns account for optional numbering (e.g., "3."), optional markdown bolding (e.g., "**Time Complexity**"),
+      // These patterns account for optional markdown headers (e.g., "###"), optional numbering (e.g., "3."), 
+      // optional markdown bolding (e.g., "**Time Complexity**"),
       // and ensure that captured content preserves internal newlines.
 
-      // Matches "Time Complexity:" (case-insensitive), possibly numbered and/or bolded.
+      // Matches "Time Complexity:" (case-insensitive), possibly prefixed by markdown header, numbered, and/or bolded.
       // Captures everything until "Space Complexity:" (similarly formatted) or end of string.
-      const timeComplexityPattern = /(?:^|\n)[ \t]*(?:\d+\.\s*)?(?:\*\*)?Time\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:^|\n)[ \t]*(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?|$)/i;
+      const timeComplexityPattern = /(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Time\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?|$)/i;
       
-      // Matches "Space Complexity:" (case-insensitive), possibly numbered and/or bolded.
+      // Matches "Space Complexity:" (case-insensitive), possibly prefixed by markdown header, numbered, and/or bolded.
       // Captures everything until the next distinct section header line or end of string.
       // A "distinct section header line" is one that primarily consists of a title-like text (e.g., "5. Conclusion", "**Notes:**"),
-      // optionally numbered/bolded, and is followed by a newline or end of string.
-      const spaceComplexityPattern = /(?:^|\n)[ \t]*(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:(?:^|\n)[ \t]*(?:(?:\d+\.\s*)?(?:\*\*)?[A-Z][A-Za-z0-9\s,'()\-]{1,80}(?:\*\*)?:?)\s*(?:\n|$))|$)/i;
+      // optionally prefixed by markdown header, numbered/bolded, and is followed by a newline or end of string.
+      const spaceComplexityPattern = /(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:(?:^|\n)[ \t]*(?:#+\s*)?(?:(?:\d+\.\s*)?(?:\*\*)?[A-Z][A-Za-z0-9\s,'()\-]{1,80}(?:\*\*)?:?)\s*(?:\n|$))|$)/i;
 
       let timeComplexity = "Time-Error.";
-      let spaceComplexity = "Space-Error";
-
+      let spaceComplexity = "Space-Error."; // Corrected default to match the pattern of Time-Error.
+      
       console.log("Response Content for complexity parsing:", responseContent);
 
       const timeMatch = responseContent.match(timeComplexityPattern);
       if (timeMatch && timeMatch[1]) {
-        // Preserve line breaks and trim only leading/trailing whitespace from the captured block
         timeComplexity = timeMatch[1].replace(/\r\n/g, '\n').trim();
-        // If no O(...) notation, prepend O(n) -
-        if (!timeComplexity.match(/O\([^)]+\)/i)) {
+        if (timeComplexity === "") { // Handle explicitly empty content
+            timeComplexity = "O(n) - Explanation needed";
+        } else if (!timeComplexity.match(/O\([^)]+\)/i)) { // If no O(...) notation
           timeComplexity = `O(n) - ${timeComplexity}`;
         } else if (!timeComplexity.includes('-') && !timeComplexity.match(/because|driven by|due to|as|for example|where|which is|since|meaning/i)) {
           // If O(...) is present but no dash or common explanation keyword, add a dash
-          // This helps format entries like "O(N) The algorithm iterates once." to "O(N) - The algorithm iterates once."
           const notationMatch = timeComplexity.match(/O\([^)]+\)/i);
           if (notationMatch) {
             const notation = notationMatch[0];
@@ -963,7 +965,9 @@ Your solution should be efficient, well-commented, and handle edge cases.
       const spaceMatch = responseContent.match(spaceComplexityPattern);
       if (spaceMatch && spaceMatch[1]) {
         spaceComplexity = spaceMatch[1].replace(/\r\n/g, '\n').trim();
-        if (!spaceComplexity.match(/O\([^)]+\)/i)) {
+        if (spaceComplexity === "") { // Handle explicitly empty content
+            spaceComplexity = "O(n) - Explanation needed";
+        } else if (!spaceComplexity.match(/O\([^)]+\)/i)) { // If no O(...) notation
           spaceComplexity = `O(n) - ${spaceComplexity}`;
         } else if (!spaceComplexity.includes('-') && !spaceComplexity.match(/because|driven by|due to|as|for example|where|which is|since|meaning/i)) {
           const notationMatch = spaceComplexity.match(/O\([^)]+\)/i);
@@ -972,7 +976,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
             const rest = spaceComplexity.substring(notation.length).trim();
              if (rest && !rest.startsWith('-')) {
                  spaceComplexity = `${notation} - ${rest}`;
-            } else if (!rest) {
+            } else if (!rest) { // Only notation was present
                  spaceComplexity = `${notation} - Explanation needed`;
             }
           }
@@ -980,6 +984,9 @@ Your solution should be efficient, well-commented, and handle edge cases.
       } else {
         console.warn("Could not parse Space Complexity from response.");
       }
+
+
+
 
       const formattedResponse = {
         code: code,
