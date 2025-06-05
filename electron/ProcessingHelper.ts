@@ -8,6 +8,8 @@ import { app, BrowserWindow, dialog } from "electron"
 import { OpenAI } from "openai"
 import { configHelper } from "./ConfigHelper"
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from "@google/genai";
+
 
 // Interface for Gemini API requests
 interface GeminiMessage {
@@ -770,6 +772,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
 
       let responseContent;
       
+
       if (config.apiProvider === "openai") {
         // OpenAI processing
         if (!this.openaiClient) {
@@ -792,47 +795,33 @@ Your solution should be efficient, well-commented, and handle edge cases.
 
         responseContent = solutionResponse.choices[0].message.content;
       } else if (config.apiProvider === "gemini")  {
-        // Gemini processing
+        // Gemini processing using GoogleGenAI SDK (with config object)
         if (!this.geminiApiKey) {
           return {
             success: false,
             error: "Gemini API key not configured. Please check your settings."
           };
         }
-        
+
         try {
-          // Create Gemini message structure
-          const geminiMessages = [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `You are an expert coding interview assistant. Provide a clear, optimal solution with detailed explanations for this problem:\n\n${promptText}`
-                }
-              ]
+          const ai = new GoogleGenAI({ apiKey: this.geminiApiKey });
+
+          const response = await ai.models.generateContent({
+            model: config.solutionModel || "gemini-2.0-flash",
+            contents: `You are an expert coding interview assistant. Provide a clear, optimal solution with detailed explanations for this problem:\n\n${promptText}`,
+            config: {
+              maxOutputTokens: 4000,
+              temperature: 0.2,
+              candidateCount: 1
             }
-          ];
+          });
 
-          // Make API request to Gemini
-          const response = await axios.default.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/${config.solutionModel || "gemini-2.0-flash"}:generateContent?key=${this.geminiApiKey}`,
-            {
-              contents: geminiMessages,
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 4000
-              }
-            },
-            { signal }
-          );
-
-          const responseData = response.data as GeminiResponse;
-          
-          if (!responseData.candidates || responseData.candidates.length === 0) {
+          // The SDK returns a response object with a 'text' property for the main content
+          if (!response || !response.text || response.text.trim() === "") {
             throw new Error("Empty response from Gemini API");
           }
-          
-          responseContent = responseData.candidates[0].content.parts[0].text;
+
+          responseContent = response.text;
         } catch (error) {
           console.error("Error using Gemini API for solution:", error);
           return {
@@ -840,6 +829,8 @@ Your solution should be efficient, well-commented, and handle edge cases.
             error: "Failed to generate solution with Gemini API. Please check your API key or try again later."
           };
         }
+
+        
       } else if (config.apiProvider === "anthropic") {
         // Anthropic processing
         if (!this.anthropicClient) {
@@ -986,8 +977,6 @@ Your solution should be efficient, well-commented, and handle edge cases.
       }
 
 
-
-
       const formattedResponse = {
         code: code,
         thoughts: thoughts.length > 0 ? thoughts : ["Solution approach based on efficiency and readability"],
@@ -997,27 +986,20 @@ Your solution should be efficient, well-commented, and handle edge cases.
 
       return { success: true, data: formattedResponse };
     } catch (error: any) {
+      let errorMsg = "Failed to generate solution";
+
       if (axios.isCancel(error)) {
-        return {
-          success: false,
-          error: "Processing was canceled by the user."
-        };
-      }
-      
-      if (error?.response?.status === 401) {
-        return {
-          success: false,
-          error: "Invalid OpenAI API key. Please check your settings."
-        };
+        errorMsg = "Processing was canceled by the user.";
+      } else if (error?.response?.status === 401) {
+        errorMsg = "Invalid OpenAI API key. Please check your settings.";
       } else if (error?.response?.status === 429) {
-        return {
-          success: false,
-          error: "OpenAI API rate limit exceeded or insufficient credits. Please try again later."
-        };
+        errorMsg = "OpenAI API rate limit exceeded or insufficient credits. Please try again later.";
+      } else if (error?.message) {
+        errorMsg = error.message;
       }
-      
+
       console.error("Solution generation error:", error);
-      return { success: false, error: error.message || "Failed to generate solution" };
+      return { success: false, error: errorMsg };
     }
   }
 
@@ -1285,7 +1267,6 @@ If you include code examples, use proper markdown code blocks with language spec
         }
       }
       
-      
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
           message: "Debug analysis complete",
@@ -1293,15 +1274,12 @@ If you include code examples, use proper markdown code blocks with language spec
         });
       }
 
-      let extractedCode = "// Debug mode - see analysis below";
-      const codeMatch = debugContent.match(/```(?:[a-zA-Z]+)?([\s\S]*?)```/);
-      if (codeMatch && codeMatch[1]) {
-        extractedCode = codeMatch[1].trim();
-      }
+      // Extract code block if present, else use default message
+      const extractedCode = (debugContent.match(/```(?:[a-zA-Z]+)?([\s\S]*?)```/)?.[1] || "// Debug mode - see analysis below").trim();
 
+      // Add markdown headers if missing
       let formattedDebugContent = debugContent;
-      
-      if (!debugContent.includes('# ') && !debugContent.includes('## ')) {
+      if (!/#\s/.test(debugContent)) {
         formattedDebugContent = debugContent
           .replace(/issues identified|problems found|bugs found/i, '## Issues Identified')
           .replace(/code improvements|improvements|suggested changes/i, '## Code Improvements')
@@ -1309,20 +1287,21 @@ If you include code examples, use proper markdown code blocks with language spec
           .replace(/explanation|detailed analysis/i, '## Explanation');
       }
 
-      const bulletPoints = formattedDebugContent.match(/(?:^|\n)[ ]*(?:[-*•]|\d+\.)[ ]+([^\n]+)/g);
-      const thoughts = bulletPoints 
-        ? bulletPoints.map(point => point.replace(/^[ ]*(?:[-*•]|\d+\.)[ ]+/, '').trim()).slice(0, 5)
-        : ["Debug analysis based on your screenshots"];
-      
-      const response = {
-        code: extractedCode,
-        debug_analysis: formattedDebugContent,
-        thoughts: thoughts,
-        time_complexity: "N/A - Debug mode",
-        space_complexity: "N/A - Debug mode"
-      };
+      // Extract up to 5 bullet points, or use default
+      const thoughts = (formattedDebugContent.match(/(?:^|\n)[ ]*(?:[-*•]|\d+\.)[ ]+([^\n]+)/g) || [])
+        .map(point => point.replace(/^[ ]*(?:[-*•]|\d+\.)[ ]+/, '').trim())
+        .slice(0, 5);
 
-      return { success: true, data: response };
+      return {
+        success: true,
+        data: {
+          code: extractedCode,
+          debug_analysis: formattedDebugContent,
+          thoughts: thoughts.length ? thoughts : ["Debug analysis based on your screenshots"],
+          time_complexity: "N/A - Debug mode",
+          space_complexity: "N/A - Debug mode"
+        }
+      };
     } catch (error: any) {
       console.error("Debug processing error:", error);
       return { success: false, error: error.message || "Failed to process debug request" };
