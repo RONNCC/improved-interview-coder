@@ -13,7 +13,13 @@ import { Button } from "../ui/button";
 import { Settings } from "lucide-react";
 import { useToast } from "../../contexts/toast";
 
-type APIProvider = "openai" | "gemini" | "anthropic";
+const PROVIDERS = {
+  OPENAI: "openai",
+  GEMINI: "gemini",
+  ANTHROPIC: "anthropic"
+} as const;
+
+type APIProvider = typeof PROVIDERS[keyof typeof PROVIDERS];
 
 type AIModel = {
   id: string;
@@ -38,25 +44,25 @@ const modelCategories: ModelCategory[] = [
     description: 'Model used to analyze screenshots and extract problem details',
     openaiModels: [
       {
-        id: "gpt-4o",
-        name: "gpt-4o",
+        id: "gpt-4.1",
+        name: "gpt-4.1",
         description: "Best overall performance for problem extraction"
       },
       {
-        id: "gpt-4o-mini",
-        name: "gpt-4o-mini",
+        id: "o4-mini",
+        name: "o4-mini",
         description: "Faster, more cost-effective option"
       }
     ],
     geminiModels: [
       {
-        id: "gemini-1.5-pro",
-        name: "Gemini 1.5 Pro",
+        id: "gemini-2.5-pro-preview-05-06",
+        name: "gemini-2.5-pro-preview-05-06",
         description: "Best overall performance for problem extraction"
       },
       {
         id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
+        name: "gemini-2.0-flash",
         description: "Faster, more cost-effective option"
       }
     ],
@@ -84,25 +90,25 @@ const modelCategories: ModelCategory[] = [
     description: 'Model used to generate coding solutions',
     openaiModels: [
       {
-        id: "gpt-4o",
-        name: "gpt-4o",
+        id: "gpt-4.1",
+        name: "gpt-4.1",
         description: "Strong overall performance for coding tasks"
       },
       {
-        id: "gpt-4o-mini",
-        name: "gpt-4o-mini",
+        id: "o4-mini",
+        name: "o4-mini",
         description: "Faster, more cost-effective option"
       }
     ],
     geminiModels: [
       {
-        id: "gemini-1.5-pro",
-        name: "Gemini 1.5 Pro",
+        id: "gemini-2.5-pro-preview-05-06",
+        name: "gemini-2.5-pro-preview-05-06",
         description: "Strong overall performance for coding tasks"
       },
       {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
+        id: "gemini-2.5-flash-preview-05-20	",
+        name: "gemini-2.5-flash-preview-05-20	",
         description: "Faster, more cost-effective option"
       }
     ],
@@ -130,25 +136,25 @@ const modelCategories: ModelCategory[] = [
     description: 'Model used to debug and improve solutions',
     openaiModels: [
       {
-        id: "gpt-4o",
-        name: "gpt-4o",
+        id: "gpt-4.1",
+        name: "gpt-4.1",
         description: "Best for analyzing code and error messages"
       },
       {
-        id: "gpt-4o-mini",
-        name: "gpt-4o-mini",
+        id: "o4-mini",
+        name: "o4-mini",
         description: "Faster, more cost-effective option"
       }
     ],
     geminiModels: [
       {
-        id: "gemini-1.5-pro",
-        name: "Gemini 1.5 Pro",
+        id: "gemini-2.5-pro-preview-05-06",
+        name: "gemini-2.5-pro-preview-05-06",
         description: "Best for analyzing code and error messages"
       },
       {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
+        id: "gemini-2.5-flash-preview-05-20",
+        name: "gemini-2.5-flash-preview-05-20",
         description: "Faster, more cost-effective option"
       }
     ],
@@ -180,7 +186,7 @@ interface SettingsDialogProps {
 export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDialogProps) {
   const [open, setOpen] = useState(externalOpen || false);
   const [apiKey, setApiKey] = useState("");
-  const [apiProvider, setApiProvider] = useState<APIProvider>("openai");
+  const [apiProvider, setApiProvider] = useState<APIProvider>(PROVIDERS.OPENAI);
   const [extractionModel, setExtractionModel] = useState("gpt-4o");
   const [solutionModel, setSolutionModel] = useState("gpt-4o");
   const [debuggingModel, setDebuggingModel] = useState("gpt-4o");
@@ -219,7 +225,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
         .getConfig()
         .then((config: Config) => {
           setApiKey(config.apiKey || "");
-          setApiProvider(config.apiProvider || "openai");
+          setApiProvider(config.apiProvider || PROVIDERS.OPENAI);
           setExtractionModel(config.extractionModel || "gpt-4o");
           setSolutionModel(config.solutionModel || "gpt-4o");
           setDebuggingModel(config.debuggingModel || "gpt-4o");
@@ -237,17 +243,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
   // Handle API provider change
   const handleProviderChange = (provider: APIProvider) => {
     setApiProvider(provider);
-    
-    // Reset models to defaults when changing provider
-    if (provider === "openai") {
-      setExtractionModel("gpt-4o");
-      setSolutionModel("gpt-4o");
-      setDebuggingModel("gpt-4o");
-    } else if (provider === "gemini") {
-      setExtractionModel("gemini-1.5-pro");
-      setSolutionModel("gemini-1.5-pro");
-      setDebuggingModel("gemini-1.5-pro");
-    } else if (provider === "anthropic") {
+    // Reset models to correct defaults when changing provider
+    if (provider === PROVIDERS.OPENAI) {
+      setExtractionModel("gpt-4.1");
+      setSolutionModel("gpt-4.1");
+      setDebuggingModel("gpt-4.1");
+    } else if (provider === PROVIDERS.GEMINI) {
+      setExtractionModel("gemini-2.5-flash-preview-05-20");
+      setSolutionModel("gemini-2.5-flash-preview-05-20");
+      setDebuggingModel("gemini-2.5-flash-preview-05-20");
+    } else if (provider === PROVIDERS.ANTHROPIC) {
       setExtractionModel("claude-3-7-sonnet-20250219");
       setSolutionModel("claude-3-7-sonnet-20250219");
       setDebuggingModel("claude-3-7-sonnet-20250219");
@@ -328,16 +333,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             <div className="flex gap-2">
               <div
                 className={`flex-1 p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === "openai"
+                  apiProvider === PROVIDERS.OPENAI
                     ? "bg-white/10 border border-white/20"
                     : "bg-black/30 border border-white/5 hover:bg-white/5"
                 }`}
-                onClick={() => handleProviderChange("openai")}
+                onClick={() => handleProviderChange(PROVIDERS.OPENAI)}
               >
                 <div className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full ${
-                      apiProvider === "openai" ? "bg-white" : "bg-white/20"
+                      apiProvider === PROVIDERS.OPENAI ? "bg-white" : "bg-white/20"
                     }`}
                   />
                   <div className="flex flex-col">
@@ -348,16 +353,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </div>
               <div
                 className={`flex-1 p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === "gemini"
+                  apiProvider === PROVIDERS.GEMINI
                     ? "bg-white/10 border border-white/20"
                     : "bg-black/30 border border-white/5 hover:bg-white/5"
                 }`}
-                onClick={() => handleProviderChange("gemini")}
+                onClick={() => handleProviderChange(PROVIDERS.GEMINI)}
               >
                 <div className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full ${
-                      apiProvider === "gemini" ? "bg-white" : "bg-white/20"
+                      apiProvider === PROVIDERS.GEMINI ? "bg-white" : "bg-white/20"
                     }`}
                   />
                   <div className="flex flex-col">
@@ -368,16 +373,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </div>
               <div
                 className={`flex-1 p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === "anthropic"
+                  apiProvider === PROVIDERS.ANTHROPIC
                     ? "bg-white/10 border border-white/20"
                     : "bg-black/30 border border-white/5 hover:bg-white/5"
                 }`}
-                onClick={() => handleProviderChange("anthropic")}
+                onClick={() => handleProviderChange(PROVIDERS.ANTHROPIC)}
               >
                 <div className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full ${
-                      apiProvider === "anthropic" ? "bg-white" : "bg-white/20"
+                      apiProvider === PROVIDERS.ANTHROPIC ? "bg-white" : "bg-white/20"
                     }`}
                   />
                   <div className="flex flex-col">
@@ -391,9 +396,9 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
           
           <div className="space-y-2">
             <label className="text-sm font-medium text-white" htmlFor="apiKey">
-            {apiProvider === "openai" ? "OpenAI API Key" : 
-             apiProvider === "gemini" ? "Gemini API Key" : 
-             "Anthropic API Key"}
+              {apiProvider === PROVIDERS.OPENAI ? "OpenAI API Key" : 
+               apiProvider === PROVIDERS.GEMINI ? "Gemini API Key" : 
+               "Anthropic API Key"}
             </label>
             <Input
               id="apiKey"
@@ -401,8 +406,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={
-                apiProvider === "openai" ? "sk-..." : 
-                apiProvider === "gemini" ? "Enter your Gemini API key" :
+                apiProvider === PROVIDERS.OPENAI ? "sk-..." : 
+                apiProvider === PROVIDERS.GEMINI ? "Enter your Gemini API key" :
                 "sk-ant-..."
               }
               className="bg-black/50 border-white/10 text-white"
@@ -413,11 +418,11 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </p>
             )}
             <p className="text-xs text-white/50">
-              Your API key is stored locally and never sent to any server except {apiProvider === "openai" ? "OpenAI" : "Google"}
+              Your API key is stored locally and never sent to any server except {apiProvider === PROVIDERS.OPENAI ? "OpenAI" : "Google"}
             </p>
             <div className="mt-2 p-2 rounded-md bg-white/5 border border-white/10">
               <p className="text-xs text-white/80 mb-1">Don't have an API key?</p>
-              {apiProvider === "openai" ? (
+              {apiProvider === PROVIDERS.OPENAI ? (
                 <>
                   <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
                     onClick={() => openExternalLink('https://platform.openai.com/signup')} 
@@ -429,7 +434,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                   </p>
                   <p className="text-xs text-white/60">3. Create a new secret key and paste it here</p>
                 </>
-              ) : apiProvider === "gemini" ?  (
+              ) : apiProvider === PROVIDERS.GEMINI ?  (
                 <>
                   <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
                     onClick={() => openExternalLink('https://aistudio.google.com/')} 
@@ -509,8 +514,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             {modelCategories.map((category) => {
               // Get the appropriate model list based on selected provider
               const models = 
-                apiProvider === "openai" ? category.openaiModels : 
-                apiProvider === "gemini" ? category.geminiModels :
+                apiProvider === PROVIDERS.OPENAI ? category.openaiModels : 
+                apiProvider === PROVIDERS.GEMINI ? category.geminiModels :
                 category.anthropicModels;
               
               return (

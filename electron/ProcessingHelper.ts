@@ -10,6 +10,21 @@ import { configHelper } from "./ConfigHelper"
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from "@google/genai";
 
+// API Configuration
+const API_CONFIG = {
+  maxTokens: {
+    extraction: 4000,
+    solution: 4000,
+    debugging: 4000
+  }
+} as const;
+
+// Enum for API providers
+export enum ApiProvider {
+  OpenAI = "openai",
+  Gemini = "gemini",
+  Anthropic = "anthropic"
+}
 
 // Interface for Gemini API requests
 interface GeminiMessage {
@@ -49,7 +64,7 @@ export class ProcessingHelper {
   private deps: IProcessingHelperDeps
   private screenshotHelper: ScreenshotHelper
   private openaiClient: OpenAI | null = null
-  private geminiApiKey: string | null = null
+  private geminiClient: GoogleGenAI | null = null
   private anthropicClient: Anthropic | null = null
 
   // AbortControllers for API requests
@@ -76,39 +91,39 @@ export class ProcessingHelper {
     try {
       const config = configHelper.loadConfig();
       
-      if (config.apiProvider === "openai") {
+      if (config.apiProvider === ApiProvider.OpenAI) {
         if (config.apiKey) {
           this.openaiClient = new OpenAI({ 
             apiKey: config.apiKey,
             timeout: 60000, // 60 second timeout
             maxRetries: 2   // Retry up to 2 times
           });
-          this.geminiApiKey = null;
+          this.geminiClient = null;
           this.anthropicClient = null;
           console.log("OpenAI client initialized successfully");
         } else {
           this.openaiClient = null;
-          this.geminiApiKey = null;
+          this.geminiClient = null;
           this.anthropicClient = null;
           console.warn("No API key available, OpenAI client not initialized");
         }
-      } else if (config.apiProvider === "gemini"){
+      } else if (config.apiProvider === ApiProvider.Gemini){
         // Gemini client initialization
         this.openaiClient = null;
         this.anthropicClient = null;
         if (config.apiKey) {
-          this.geminiApiKey = config.apiKey;
-          console.log("Gemini API key set successfully");
+          this.geminiClient = new GoogleGenAI({ apiKey: config.apiKey });
+          console.log("Gemini client initialized successfully");
         } else {
           this.openaiClient = null;
-          this.geminiApiKey = null;
+          this.geminiClient = null;
           this.anthropicClient = null;
           console.warn("No API key available, Gemini client not initialized");
         }
-      } else if (config.apiProvider === "anthropic") {
+      } else if (config.apiProvider === ApiProvider.Anthropic) {
         // Reset other clients
         this.openaiClient = null;
-        this.geminiApiKey = null;
+        this.geminiClient = null;
         if (config.apiKey) {
           this.anthropicClient = new Anthropic({
             apiKey: config.apiKey,
@@ -118,7 +133,7 @@ export class ProcessingHelper {
           console.log("Anthropic client initialized successfully");
         } else {
           this.openaiClient = null;
-          this.geminiApiKey = null;
+          this.geminiClient = null;
           this.anthropicClient = null;
           console.warn("No API key available, Anthropic client not initialized");
         }
@@ -126,7 +141,7 @@ export class ProcessingHelper {
     } catch (error) {
       console.error("Failed to initialize AI client:", error);
       this.openaiClient = null;
-      this.geminiApiKey = null;
+      this.geminiClient = null;
       this.anthropicClient = null;
     }
   }
@@ -205,7 +220,7 @@ export class ProcessingHelper {
     const config = configHelper.loadConfig();
     
     // First verify we have a valid AI client
-    if (config.apiProvider === "openai" && !this.openaiClient) {
+    if (config.apiProvider === ApiProvider.OpenAI && !this.openaiClient) {
       this.initializeAIClient();
       
       if (!this.openaiClient) {
@@ -215,17 +230,17 @@ export class ProcessingHelper {
         );
         return;
       }
-    } else if (config.apiProvider === "gemini" && !this.geminiApiKey) {
+    } else if (config.apiProvider === ApiProvider.Gemini && !this.geminiClient) {
       this.initializeAIClient();
       
-      if (!this.geminiApiKey) {
+      if (!this.geminiClient) {
         console.error("Gemini API key not initialized");
         mainWindow.webContents.send(
           this.deps.PROCESSING_EVENTS.API_KEY_INVALID
         );
         return;
       }
-    } else if (config.apiProvider === "anthropic" && !this.anthropicClient) {
+    } else if (config.apiProvider === ApiProvider.Anthropic && !this.anthropicClient) {
       // Add check for Anthropic client
       this.initializeAIClient();
       
@@ -448,10 +463,23 @@ export class ProcessingHelper {
       const config = configHelper.loadConfig();
       const language = await this.getLanguage();
       const mainWindow = this.deps.getMainWindow();
-      
+
+      // --- PROMPT STRINGS EXTRACTED TO TOP, USING language VAR ---
+      const openAIPromptSystem =
+        "You are a coding challenge interpreter. Analyze the screenshot of the coding problem and extract all relevant information including examples and any classes already given. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text. Also try to roughly return if there is any initial starting code. ";
+      const openAIPromptUser =
+        `Extract the coding problem details from these screenshots verbosely. Return in JSON format. Preferred coding language we gonna use for this problem is ${language}.`;
+
+      const geminiPrompt =
+        `You are a coding challenge interpreter. Analyze the screenshots of the coding problem and extract all relevant information including examples and any classes already given. Return the information in JSON format with these fields: problem_statement, constraints (including any classes already given), example_input, example_output. Just return the structured JSON without any other text. Preferred coding language we gonna use for this problem is ${language}.`;
+
+      const anthropicPrompt =
+        `Extract the coding problem details from these screenshots. Return in JSON format with these fields: problem_statement, constraints, example_input, example_output. Preferred coding language is ${language}.`;
+      // ---------------------------------------
+
       // Step 1: Extract problem info using AI Vision API (OpenAI or Gemini)
       const imageDataList = screenshots.map(screenshot => screenshot.data);
-      
+
       // Update the user on progress
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
@@ -461,12 +489,12 @@ export class ProcessingHelper {
       }
 
       let problemInfo;
-      
-      if (config.apiProvider === "openai") {
+
+      if (config.apiProvider === ApiProvider.OpenAI) {
         // Verify OpenAI client
         if (!this.openaiClient) {
           this.initializeAIClient(); // Try to reinitialize
-          
+
           if (!this.openaiClient) {
             return {
               success: false,
@@ -478,15 +506,15 @@ export class ProcessingHelper {
         // Use OpenAI for processing
         const messages = [
           {
-            role: "system" as const, 
-            content: "You are a coding challenge interpreter. Analyze the screenshot of the coding problem and extract all relevant information. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text."
+            role: "system" as const,
+            content: openAIPromptSystem
           },
           {
             role: "user" as const,
             content: [
               {
-                type: "text" as const, 
-                text: `Extract the coding problem details from these screenshots. Return in JSON format. Preferred coding language we gonna use for this problem is ${language}.`
+                type: "text" as const,
+                text: openAIPromptUser
               },
               ...imageDataList.map(data => ({
                 type: "image_url" as const,
@@ -500,7 +528,7 @@ export class ProcessingHelper {
         const extractionResponse = await this.openaiClient.chat.completions.create({
           model: config.extractionModel || "gpt-4o",
           messages: messages,
-          max_tokens: 4000,
+          max_tokens: API_CONFIG.maxTokens.extraction,
           temperature: 0.2,
           response_format: { type: "json_object" }
         });
@@ -509,6 +537,9 @@ export class ProcessingHelper {
         try {
           // With response_format: { type: "json_object" }, OpenAI should return valid JSON directly
           const responseText = extractionResponse.choices[0].message.content;
+
+          console.log("OpenAI response:", responseText);
+
           // Defensive: Sometimes OpenAI still wraps in code blocks, so strip if present
           const jsonText = responseText.replace(/^\s*```(?:json)?|```\s*$/g, '').trim();
           problemInfo = JSON.parse(jsonText);
@@ -520,10 +551,9 @@ export class ProcessingHelper {
           };
         }
 
-        
-      } else if (config.apiProvider === "gemini")  {
+      } else if (config.apiProvider === ApiProvider.Gemini)  {
         // Use Gemini API with GoogleGenAI SDK
-        if (!this.geminiApiKey) {
+        if (!this.geminiClient) {
           return {
             success: false,
             error: "Gemini API key not configured. Please check your settings."
@@ -531,12 +561,10 @@ export class ProcessingHelper {
         }
 
         try {
-          const ai = new GoogleGenAI({ apiKey: this.geminiApiKey });
-
           // Prepare the content parts: text prompt + images as inlineData
           const contentParts = [
             {
-              text: `You are a coding challenge interpreter. Analyze the screenshots of the coding problem and extract all relevant information. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text. Preferred coding language we gonna use for this problem is ${language}.`
+              text: geminiPrompt
             },
             ...imageDataList.map(data => ({
               inlineData: {
@@ -547,7 +575,7 @@ export class ProcessingHelper {
           ];
 
           // Call Gemini SDK
-          const response = await ai.models.generateContent({
+          const response = await this.geminiClient.models.generateContent({
             model: config.extractionModel || "gemini-2.0-flash",
             contents: [
               {
@@ -557,7 +585,7 @@ export class ProcessingHelper {
             ],
             config: {
               temperature: 0.2,
-              maxOutputTokens: 4000
+              maxOutputTokens: API_CONFIG.maxTokens.extraction
             }
           });
 
@@ -576,7 +604,7 @@ export class ProcessingHelper {
             error: "Failed to process with Gemini API. Please check your API key or try again later."
           };
         }
-      } else if (config.apiProvider === "anthropic") {
+      } else if (config.apiProvider === ApiProvider.Anthropic) {
         if (!this.anthropicClient) {
           return {
             success: false,
@@ -591,7 +619,7 @@ export class ProcessingHelper {
               content: [
                 {
                   type: "text" as const,
-                  text: `Extract the coding problem details from these screenshots. Return in JSON format with these fields: problem_statement, constraints, example_input, example_output. Preferred coding language is ${language}.`
+                  text: anthropicPrompt
                 },
                 ...imageDataList.map(data => ({
                   type: "image" as const,
@@ -607,7 +635,7 @@ export class ProcessingHelper {
 
           const response = await this.anthropicClient.messages.create({
             model: config.extractionModel || "claude-3-7-sonnet-20250219",
-            max_tokens: 4000,
+            max_tokens: API_CONFIG.maxTokens.extraction,
             messages: messages,
             temperature: 0.2
           });
@@ -618,13 +646,17 @@ export class ProcessingHelper {
         } catch (error: any) {
           console.error("Error using Anthropic API:", error);
 
-          // Add specific handling for Claude's limitations
-          if (error.status === 429) {
+          // Handle specific Anthropic/Claude error cases
+          if (error?.status === 429) {
             return {
               success: false,
               error: "Claude API rate limit exceeded. Please wait a few minutes before trying again."
             };
-          } else if (error.status === 413 || (error.message && error.message.includes("token"))) {
+          }
+          if (
+            error?.status === 413 ||
+            (typeof error?.message === "string" && error.message.toLowerCase().includes("token"))
+          ) {
             return {
               success: false,
               error: "Your screenshots contain too much information for Claude to process. Switch to OpenAI or Gemini in settings which can handle larger inputs."
@@ -635,6 +667,7 @@ export class ProcessingHelper {
             success: false,
             error: "Failed to process with Anthropic API. Please check your API key or try again later."
           };
+          
         }
       }
       
@@ -769,7 +802,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
       let responseContent;
       
 
-      if (config.apiProvider === "openai") {
+      if (config.apiProvider === ApiProvider.OpenAI) {
         // OpenAI processing
         if (!this.openaiClient) {
           return {
@@ -785,14 +818,14 @@ Your solution should be efficient, well-commented, and handle edge cases.
             { role: "system", content: "You are an expert coding interview assistant. Provide clear, optimal solutions with detailed explanations." },
             { role: "user", content: promptText }
           ],
-          max_tokens: 4000,
+          max_tokens: API_CONFIG.maxTokens.solution,
           temperature: 0.2
         });
 
         responseContent = solutionResponse.choices[0].message.content;
-      } else if (config.apiProvider === "gemini")  {
+      } else if (config.apiProvider === ApiProvider.Gemini)  {
         // Gemini processing using GoogleGenAI SDK (with config object)
-        if (!this.geminiApiKey) {
+        if (!this.geminiClient) {
           return {
             success: false,
             error: "Gemini API key not configured. Please check your settings."
@@ -800,17 +833,16 @@ Your solution should be efficient, well-commented, and handle edge cases.
         }
 
         try {
-          const ai = new GoogleGenAI({ apiKey: this.geminiApiKey });
-
-          const response = await ai.models.generateContent({
+          const response = await this.geminiClient.models.generateContent({
             model: config.solutionModel || "gemini-2.0-flash",
             contents: `You are an expert coding interview assistant. Provide a clear, optimal solution with detailed explanations for this problem:\n\n${promptText}`,
             config: {
-              maxOutputTokens: 4000,
+              maxOutputTokens: API_CONFIG.maxTokens.solution,
               temperature: 0.2,
               candidateCount: 1
             }
           });
+          console.log("Using Gemini model:", config.solutionModel, "with response:", response);
 
           // The SDK returns a response object with a 'text' property for the main content
           if (!response || !response.text || response.text.trim() === "") {
@@ -827,7 +859,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
         }
 
         
-      } else if (config.apiProvider === "anthropic") {
+      } else if (config.apiProvider === ApiProvider.Anthropic) {
         // Anthropic processing
         if (!this.anthropicClient) {
           return {
@@ -852,7 +884,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
           // Send to Anthropic API
           const response = await this.anthropicClient.messages.create({
             model: config.solutionModel || "claude-3-7-sonnet-20250219",
-            max_tokens: 4000,
+            max_tokens: API_CONFIG.maxTokens.solution,
             messages: messages,
             temperature: 0.2
           });
@@ -1026,7 +1058,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
       
       let debugContent;
       
-      if (config.apiProvider === "openai") {
+      if (config.apiProvider === ApiProvider.OpenAI) {
         if (!this.openaiClient) {
           return {
             success: false,
@@ -1086,13 +1118,13 @@ If you include code examples, use proper markdown code blocks with language spec
         const debugResponse = await this.openaiClient.chat.completions.create({
           model: config.debuggingModel || "gpt-4o",
           messages: messages,
-          max_tokens: 4000,
+          max_tokens: API_CONFIG.maxTokens.debugging,
           temperature: 0.2
         });
         
         debugContent = debugResponse.choices[0].message.content;
-      } else if (config.apiProvider === "gemini")  {
-        if (!this.geminiApiKey) {
+      } else if (config.apiProvider === ApiProvider.Gemini)  {
+        if (!this.geminiClient) {
           return {
             success: false,
             error: "Gemini API key not configured. Please check your settings."
@@ -1124,9 +1156,6 @@ Here provide a clear explanation of why the changes are needed
 If you include code examples, use proper markdown code blocks with language specification (e.g. \`\`\`java).
 `;
 
-          // Use GoogleGenAI SDK for Gemini
-          const ai = new GoogleGenAI({ apiKey: this.geminiApiKey });
-
           // Prepare the content parts: text prompt + images as inlineData
           const contentParts = [
             { text: debugPrompt },
@@ -1138,15 +1167,8 @@ If you include code examples, use proper markdown code blocks with language spec
             }))
           ];
 
-          if (mainWindow) {
-            mainWindow.webContents.send("processing-status", {
-              message: "Analyzing code and generating debug feedback with Gemini...",
-              progress: 60
-            });
-          }
-
           // Call Gemini SDK
-          const response = await ai.models.generateContent({
+          const response = await this.geminiClient.models.generateContent({
             model: config.debuggingModel || "gemini-2.0-flash",
             contents: [
               {
@@ -1156,7 +1178,7 @@ If you include code examples, use proper markdown code blocks with language spec
             ],
             config: {
               temperature: 0.2,
-              maxOutputTokens: 4000
+              maxOutputTokens: API_CONFIG.maxTokens.debugging
             }
           });
 
@@ -1173,7 +1195,7 @@ If you include code examples, use proper markdown code blocks with language spec
             error: "Failed to process debug request with Gemini API. Please check your API key or try again later."
           };
         }
-      } else if (config.apiProvider === "anthropic") {
+      } else if (config.apiProvider === ApiProvider.Anthropic) {
         if (!this.anthropicClient) {
           return {
             success: false,
@@ -1235,7 +1257,7 @@ If you include code examples, use proper markdown code blocks with language spec
 
           const response = await this.anthropicClient.messages.create({
             model: config.debuggingModel || "claude-3-7-sonnet-20250219",
-            max_tokens: 4000,
+            max_tokens: API_CONFIG.maxTokens.debugging,
             messages: messages,
             temperature: 0.2
           });
