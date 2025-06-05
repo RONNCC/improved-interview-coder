@@ -522,7 +522,7 @@ export class ProcessingHelper {
 
         
       } else if (config.apiProvider === "gemini")  {
-        // Use Gemini API
+        // Use Gemini API with GoogleGenAI SDK
         if (!this.geminiApiKey) {
           return {
             success: false,
@@ -531,47 +531,43 @@ export class ProcessingHelper {
         }
 
         try {
-          // Create Gemini message structure
-          const geminiMessages: GeminiMessage[] = [
+          const ai = new GoogleGenAI({ apiKey: this.geminiApiKey });
+
+          // Prepare the content parts: text prompt + images as inlineData
+          const contentParts = [
             {
-              role: "user",
-              parts: [
-                {
-                  text: `You are a coding challenge interpreter. Analyze the screenshots of the coding problem and extract all relevant information. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text. Preferred coding language we gonna use for this problem is ${language}.`
-                },
-                ...imageDataList.map(data => ({
-                  inlineData: {
-                    mimeType: "image/png",
-                    data: data
-                  }
-                }))
-              ]
-            }
+              text: `You are a coding challenge interpreter. Analyze the screenshots of the coding problem and extract all relevant information. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text. Preferred coding language we gonna use for this problem is ${language}.`
+            },
+            ...imageDataList.map(data => ({
+              inlineData: {
+                mimeType: "image/png",
+                data: data
+              }
+            }))
           ];
 
-          // Make API request to Gemini
-                    const response = await axios.default.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/${config.extractionModel || "gemini-2.0-flash"}:generateContent?key=${this.geminiApiKey}`,
-            {
-              contents: geminiMessages,
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 4000
+          // Call Gemini SDK
+          const response = await ai.models.generateContent({
+            model: config.extractionModel || "gemini-2.0-flash",
+            contents: [
+              {
+                role: "user",
+                parts: contentParts
               }
-            },
-            { signal }
-          );
+            ],
+            config: {
+              temperature: 0.2,
+              maxOutputTokens: 4000
+            }
+          });
 
-          const responseData = response.data as GeminiResponse;
-          
-          if (!responseData.candidates || responseData.candidates.length === 0) {
+          // The SDK returns a response object with a 'text' property for the main content
+          if (!response || !response.text || response.text.trim() === "") {
             throw new Error("Empty response from Gemini API");
           }
-          
-          const responseText = responseData.candidates[0].content.parts[0].text;
-          
+
           // Handle when Gemini might wrap the JSON in markdown code blocks
-          const jsonText = responseText.replace(/```json|```/g, '').trim();
+          const jsonText = response.text.replace(/```json|```/g, '').trim();
           problemInfo = JSON.parse(jsonText);
         } catch (error) {
           console.error("Error using Gemini API:", error);
@@ -1102,7 +1098,7 @@ If you include code examples, use proper markdown code blocks with language spec
             error: "Gemini API key not configured. Please check your settings."
           };
         }
-        
+
         try {
           const debugPrompt = `
 You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
@@ -1128,19 +1124,18 @@ Here provide a clear explanation of why the changes are needed
 If you include code examples, use proper markdown code blocks with language specification (e.g. \`\`\`java).
 `;
 
-          const geminiMessages = [
-            {
-              role: "user",
-              parts: [
-                { text: debugPrompt },
-                ...imageDataList.map(data => ({
-                  inlineData: {
-                    mimeType: "image/png",
-                    data: data
-                  }
-                }))
-              ]
-            }
+          // Use GoogleGenAI SDK for Gemini
+          const ai = new GoogleGenAI({ apiKey: this.geminiApiKey });
+
+          // Prepare the content parts: text prompt + images as inlineData
+          const contentParts = [
+            { text: debugPrompt },
+            ...imageDataList.map(data => ({
+              inlineData: {
+                mimeType: "image/png",
+                data: data
+              }
+            }))
           ];
 
           if (mainWindow) {
@@ -1150,25 +1145,27 @@ If you include code examples, use proper markdown code blocks with language spec
             });
           }
 
-          const response = await axios.default.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/${config.debuggingModel || "gemini-2.0-flash"}:generateContent?key=${this.geminiApiKey}`,
-            {
-              contents: geminiMessages,
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 4000
+          // Call Gemini SDK
+          const response = await ai.models.generateContent({
+            model: config.debuggingModel || "gemini-2.0-flash",
+            contents: [
+              {
+                role: "user",
+                parts: contentParts
               }
-            },
-            { signal }
-          );
+            ],
+            config: {
+              temperature: 0.2,
+              maxOutputTokens: 4000
+            }
+          });
 
-          const responseData = response.data as GeminiResponse;
-          
-          if (!responseData.candidates || responseData.candidates.length === 0) {
+          // The SDK returns a response object with a 'text' property for the main content
+          if (!response || !response.text || response.text.trim() === "") {
             throw new Error("Empty response from Gemini API");
           }
-          
-          debugContent = responseData.candidates[0].content.parts[0].text;
+
+          debugContent = response.text;
         } catch (error) {
           console.error("Error using Gemini API for debugging:", error);
           return {
