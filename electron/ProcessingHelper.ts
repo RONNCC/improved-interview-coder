@@ -9,13 +9,15 @@ import { OpenAI } from "openai"
 import { configHelper } from "./ConfigHelper"
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from "@google/genai";
+import { zodResponseFormat } from "openai/helpers/zod";
+import { z } from "zod";
 
 // API Configuration
 const API_CONFIG = {
   maxTokens: {
-    extraction: 4000,
-    solution: 4000,
-    debugging: 4000
+    extraction: 6000,
+    solution: 6000,
+    debugging: 8000
   }
 } as const;
 
@@ -471,7 +473,7 @@ export class ProcessingHelper {
         `Extract the coding problem details from these screenshots verbosely. Return in JSON format. Preferred coding language we gonna use for this problem is ${language}.`;
 
       const geminiPrompt =
-        `You are a coding challenge interpreter. Analyze the screenshots of the coding problem and extract all relevant information including examples and any classes already given. Return the information in JSON format with these fields: problem_statement, constraints (including any classes already given), example_input, example_output. Just return the structured JSON without any other text. Preferred coding language we gonna use for this problem is ${language}.`;
+        `You are a coding challenge interpreter. Analyze the screenshots of the coding problem and extract all relevant information including examples and any classes already given. Return the information in JSON format with these fields: problem_statement (ideally verbatim of the objective/input/problem statement), constraints (including any classes already given), example_inputs, example_outputs. Just return the structured JSON without any other text. Preferred coding language we gonna use for this problem is ${language}.`;
 
       const anthropicPrompt =
         `Extract the coding problem details from these screenshots. Return in JSON format with these fields: problem_statement, constraints, example_input, example_output. Preferred coding language is ${language}.`;
@@ -524,86 +526,127 @@ export class ProcessingHelper {
           }
         ];
 
-        // Send to OpenAI Vision API with response_format for JSON
-        const extractionResponse = await this.openaiClient.chat.completions.create({
-          model: config.extractionModel || "gpt-4o",
-          messages: messages,
-          max_tokens: API_CONFIG.maxTokens.extraction,
-          temperature: 0.2,
-          response_format: { type: "json_object" }
+        // Define the expected structure for the coding problem extraction
+        const ProblemExtraction = z.object({
+          problem_statement: z.string(),
+          constraints: z.string().optional(),
+          example_input: z.string().optional(),
+          example_output: z.string().optional(),
         });
 
-        // Parse the response
+        // Use OpenAI's beta structured output with zodResponseFormat
+        // (Assumes openai.beta.chat.completions.parse and zodResponseFormat are available in your OpenAI SDK)
+        let extractionResponse;
         try {
-          // With response_format: { type: "json_object" }, OpenAI should return valid JSON directly
-          const responseText = extractionResponse.choices[0].message.content;
-
-          console.log("OpenAI response:", responseText);
-
-          // Defensive: Sometimes OpenAI still wraps in code blocks, so strip if present
-          const jsonText = responseText.replace(/^\s*```(?:json)?|```\s*$/g, '').trim();
-          problemInfo = JSON.parse(jsonText);
+          extractionResponse = await this.openaiClient.beta.chat.completions.parse({
+            model: config.extractionModel || "gpt-4o",
+            messages: messages,
+            response_format: zodResponseFormat(
+              ProblemExtraction,
+              "problem_extraction"
+            ),
+            max_completion_tokens: API_CONFIG.maxTokens.extraction,
+          });
         } catch (error) {
-          console.error("Error parsing OpenAI response:", error);
+          console.error("Error during OpenAI structured extraction:", error);
+          return {
+            success: false,
+            error: "Failed to extract problem information in structured format. Please try again or use clearer screenshots."
+          };
+        }
+
+        console.log("Extraction response from LLM:", extractionResponse);
+
+        // extractionResponse will be the parsed object if successful
+        try {
+          problemInfo = extractionResponse.choices[0].message.parsed;
+        } catch (error) {
+          console.error("Error parsing OpenAI structured response:", error);
           return {
             success: false,
             error: "Failed to parse problem information. Please try again or use clearer screenshots."
           };
         }
-
       } else if (config.apiProvider === ApiProvider.Gemini)  {
-        // Use Gemini API with GoogleGenAI SDK
-        if (!this.geminiClient) {
-          return {
-            success: false,
-            error: "Gemini API key not configured. Please check your settings."
-          };
-        }
 
-        try {
-          // Prepare the content parts: text prompt + images as inlineData
-          const contentParts = [
-            {
-              text: geminiPrompt
-            },
-            ...imageDataList.map(data => ({
-              inlineData: {
-                mimeType: "image/png",
-                data: data
-              }
-            }))
-          ];
-
-          // Call Gemini SDK
-          const response = await this.geminiClient.models.generateContent({
-            model: config.extractionModel || "gemini-2.0-flash",
-            contents: [
-              {
-                role: "user",
-                parts: contentParts
-              }
-            ],
-            config: {
-              temperature: 0.2,
-              maxOutputTokens: API_CONFIG.maxTokens.extraction
-            }
-          });
-
-          // The SDK returns a response object with a 'text' property for the main content
-          if (!response || !response.text || response.text.trim() === "") {
-            throw new Error("Empty response from Gemini API");
+          // Use Gemini API with GoogleGenAI SDK
+          if (!this.geminiClient) {
+            return {
+              success: false,
+              error: "Gemini API client not initialized. Please check your settings."
+            };
           }
 
-          // Handle when Gemini might wrap the JSON in markdown code blocks
-          const jsonText = response.text.replace(/```json|```/g, '').trim();
-          problemInfo = JSON.parse(jsonText);
-        } catch (error) {
-          console.error("Error using Gemini API:", error);
-          return {
-            success: false,
-            error: "Failed to process with Gemini API. Please check your API key or try again later."
-          };
-        }
+          try {
+            // Prepare the content parts: text prompt + images as inlineData
+            const contentParts = [
+              {
+                text: geminiPrompt // Assuming geminiPrompt is defined elsewhere
+              },
+              ...imageDataList.map(data => ({ // Assuming imageDataList is an array of base64 strings
+                inlineData: {
+                  mimeType: "image/png", // Ensure this matches the actual image type
+                  data: data
+                }
+              }))
+            ];
+        
+            const genAIResult = await this.geminiClient.models.generateContent({
+              model: config.extractionModel || "gemini-2.0-flash", // Updated model name
+              contents: contentParts, // Simplified - no need for role/parts wrapper
+              config: {
+                temperature: 0.2,
+                responseMimeType: "application/json", // Crucial for JSON mode
+                maxOutputTokens: API_CONFIG.maxTokens.extraction,
+                responseSchema: { // Defines the expected JSON structure
+                  type: "object",
+                  properties: {
+                    problem_statement: { type: "string", description: "The full problem description." },
+                    constraints: { type: "string", description: "Constraints for the problem." },
+                    example_input: { type: "string", description: "An example input." },
+                    example_output: { type: "string", description: "The corresponding example output." }
+                  },
+                  required: ["problem_statement"]
+                }
+              }
+            });
+          
+            // Use the simplified response.text accessor from the new SDK
+            const jsonString = genAIResult.text;
+          
+            if (!jsonString || jsonString.trim() === "") {
+              console.error("Empty text response from Gemini API despite requesting JSON.");
+              throw new Error("Empty or invalid JSON string response from Gemini API.");
+            }
+          
+            // Parse the JSON string to get the JavaScript object
+            try {
+              // Remove potential markdown backticks if the LLM adds them
+              const cleanedJsonString = jsonString.replace(/^``````$/g, '').trim();
+              problemInfo = JSON.parse(cleanedJsonString);
+            } catch (parseError) {
+              console.error("Failed to parse JSON response from Gemini API:", parseError);
+              console.error("Original string from API:", jsonString);
+              throw new Error(`Invalid JSON format received from Gemini API: ${parseError.message}`);
+            }
+          
+          } catch (error) {
+            console.error("Error using Gemini API for extraction:", error);
+            let errorMessage = "Failed to process with Gemini API. Please check your API key or try again later.";
+            if (error.message) {
+              errorMessage = error.message;
+              if (error.message.includes("API key not valid") || error.message.includes("PERMISSION_DENIED")) {
+                  errorMessage = "Gemini API key is invalid or lacks permissions. Please check your configuration.";
+              } else if (error.message.includes("quota")) {
+                  errorMessage = "Gemini API quota exceeded. Please check your usage limits.";
+              }
+            }
+            return {
+              success: false,
+              error: errorMessage
+            };
+          }
+                    
       } else if (config.apiProvider === ApiProvider.Anthropic) {
         if (!this.anthropicClient) {
           return {
@@ -756,9 +799,12 @@ export class ProcessingHelper {
       const config = configHelper.loadConfig();
       const mainWindow = this.deps.getMainWindow();
 
-      if (!problemInfo) {
-        throw new Error("No problem info available");
+      if (!problemInfo || !problemInfo.problem_statement) {
+        console.error("No problem statement available for solution generation.", problemInfo);
+        return { success: false, error: "Problem statement extraction failed. Please try again with clearer screenshots." };
       }
+
+      console.log("Problem info before solution generation:", problemInfo);
 
       // Update progress status
       if (mainWindow) {
@@ -787,10 +833,10 @@ ${problemInfo.example_output || "No example output provided."}
 LANGUAGE: ${language}
 
 I need the response in the following format:
-1. Code: A clean, optimized implementation in ${language}.
-2. Your Thoughts: A list of key insights and reasoning behind your approach.
-3. Time complexity: O(X) with a detailed explanation (at least 2 sentences)
-4. Space complexity: O(X) with a detailed explanation (at least 2 sentences)
+1. Code: A clean, concise(within reason like dont use None everywhere), optimized implementation in ${language}.
+2. Your Thoughts: A list of key insights and reasoning behind your approach - Like what is the approach to solving here that I can say explain to the engineer asking me this question. 
+3. Time complexity: O(X) with a detailed explanation (at least 2 sentences). Try to breakdown the answer in math,  like if there's a recurrence relation.
+4. Space complexity: O(X) with a detailed explanation (at least 2 sentences).  Try to breakdown the answer in math, like if there's a recurrence relation.
 
 For complexity explanations:
 - Time complexity should include a breakdown of any major top-level operations such as loops, recursion, sorting, or data structure operations. Explain how often each one runs and why they contribute to the overall time complexity. Avoid vague summaries—be precise about what drives the cost.
@@ -818,8 +864,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
             { role: "system", content: "You are an expert coding interview assistant. Provide clear, optimal solutions with detailed explanations." },
             { role: "user", content: promptText }
           ],
-          max_tokens: API_CONFIG.maxTokens.solution,
-          temperature: 0.2
+          max_completion_tokens: API_CONFIG.maxTokens.solution,
         });
 
         responseContent = solutionResponse.choices[0].message.content;
@@ -835,17 +880,23 @@ Your solution should be efficient, well-commented, and handle edge cases.
         try {
           const response = await this.geminiClient.models.generateContent({
             model: config.solutionModel || "gemini-2.0-flash",
-            contents: `You are an expert coding interview assistant. Provide a clear, optimal solution with detailed explanations for this problem:\n\n${promptText}`,
+            contents: `You are an expert coding interview assistant. Provide a clear, optimal, concise solution with detailed explanations for this problem:\n\n${promptText}`,
             config: {
               maxOutputTokens: API_CONFIG.maxTokens.solution,
               temperature: 0.2,
-              candidateCount: 1
+              candidateCount: 1,
+              thinkingConfig: {
+                thinkingBudget: 500
+              }
             }
           });
           console.log("Using Gemini model:", config.solutionModel, "with response:", response);
-
-          // The SDK returns a response object with a 'text' property for the main content
-          if (!response || !response.text || response.text.trim() === "") {
+          // Check for Gemini API errors: token limit or empty response
+          if (response?.candidates?.[0]?.finishReason === "MAX_TOKENS") {
+            console.error("Gemini API response stopped due to MAX_TOKENS:", response);
+            throw new Error("Gemini API response stopped due to reaching the maximum token limit. Try using fewer or smaller screenshots, or a shorter prompt.");
+          }
+          if (!response?.text?.trim()) {
             throw new Error("Empty response from Gemini API");
           }
 
@@ -918,25 +969,42 @@ Your solution should be efficient, well-commented, and handle edge cases.
       const code = codeMatch ? codeMatch[1].trim() : responseContent;
       
       // Extract thoughts, looking for bullet points or numbered lists
-      const thoughtsRegex = /(?:Thoughts:|Key Insights:|Reasoning:|Approach:)([\s\S]*?)(?:Time complexity:|$)/i;
+      const thoughtsRegex = /(?:[0-9]+\.\s*)?(?:Your\s+)?(?:Thoughts|Key Insights|Reasoning|Approach|Your Thoughts)\b(?::)?([\s\S]*?)(?:Time complexity:|---|$)/i;
+      
       const thoughtsMatch = responseContent.match(thoughtsRegex);
       let thoughts: string[] = [];
       
       if (thoughtsMatch && thoughtsMatch[1]) {
-        // Extract bullet points or numbered items
-        const bulletPoints = thoughtsMatch[1].match(/(?:^|\n)\s*(?:[-*•]|\d+\.)\s*(.*)/g);
-        if (bulletPoints) {
-          thoughts = bulletPoints.map(point => 
-            point.replace(/^\s*(?:[-*•]|\d+\.)\s*/, '').trim()
-          ).filter(Boolean);
-        } else {
-          // If no bullet points found, split by newlines and filter empty lines
-          thoughts = thoughtsMatch[1].split('\n')
+        const thoughtsBlock = thoughtsMatch[1].trim(); // Get the captured block and trim whitespace
+
+        // Regex to extract individual bullet points or numbered items from the thoughtsBlock
+        // - `^`: Start of a line (due to `m` flag)
+        // - `\s*`: Optional leading whitespace
+        // - `(?:[-*•]|\d+\.)`: Matches a bullet point marker (-, *, •) or a number followed by a dot
+        // - `\s+`: One or more whitespace characters (to ensure there's a space after the marker)
+        // - `(.*)`: Captures the rest of the line (the actual thought)
+        // - `gm`: Global (find all matches) and Multiline (so ^ matches start of each line)
+        const bulletPointRegex = /^\s*(?:[-*•]|\d+\.)\s+(.*)/gm; 
+        
+        let match;
+        const extractedPoints = [];
+        while ((match = bulletPointRegex.exec(thoughtsBlock)) !== null) {
+          // match[1] contains the captured group (the text of the bullet point)
+          extractedPoints.push(match[1].trim());
+        }
+
+        if (extractedPoints.length > 0) {
+          thoughts = extractedPoints;
+        } else if (thoughtsBlock) { 
+          // If no bullet points were found but the thoughtsBlock has content,
+          // split by newlines as a fallback.
+          thoughts = thoughtsBlock.split('\n')
             .map((line) => line.trim())
-            .filter(Boolean);
+            .filter(Boolean); // Remove any empty strings resulting from blank lines
         }
       }
       console.log("Thoughts:", thoughts);
+
   
       // These patterns account for optional markdown headers (e.g., "###"), optional numbering (e.g., "3."), 
       // optional markdown bolding (e.g., "**Time Complexity**"),
@@ -1119,7 +1187,6 @@ If you include code examples, use proper markdown code blocks with language spec
           model: config.debuggingModel || "gpt-4o",
           messages: messages,
           max_tokens: API_CONFIG.maxTokens.debugging,
-          temperature: 0.2
         });
         
         debugContent = debugResponse.choices[0].message.content;

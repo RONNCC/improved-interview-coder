@@ -11,6 +11,7 @@ export interface SolutionsResponse {
 
 export interface ProblemStatementData {
   problem_statement: string
+  constraints: string
   input_format: {
     description: string
     parameters: any[]

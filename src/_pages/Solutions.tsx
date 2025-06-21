@@ -508,7 +508,15 @@ const Solutions: React.FC<SolutionsProps> = ({
                   <>
                     <ContentSection
                       title="Problem Statement"
-                      content={problemStatementData?.problem_statement}
+                      content={
+                        problemStatementData
+                          ? `${problemStatementData.problem_statement || ""}${
+                              problemStatementData.constraints
+                                ? "\n\n" + problemStatementData.constraints
+                                : ""
+                            }`
+                          : undefined
+                      }
                       isLoading={!problemStatementData}
                     />
                     {problemStatementData && (
