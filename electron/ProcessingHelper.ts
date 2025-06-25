@@ -1186,7 +1186,7 @@ If you include code examples, use proper markdown code blocks with language spec
         const debugResponse = await this.openaiClient.chat.completions.create({
           model: config.debuggingModel || "gpt-4o",
           messages: messages,
-          max_tokens: API_CONFIG.maxTokens.debugging,
+          max_completion_tokens: API_CONFIG.maxTokens.debugging,
         });
         
         debugContent = debugResponse.choices[0].message.content;
