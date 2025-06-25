@@ -269,58 +269,62 @@ export class ConfigHelper extends EventEmitter {
   }
 
   /**
-   * Set the window opacity value
+   * Set the window opacity value (clamped between 0.1 and 1.0)
    */
   public setOpacity(opacity: number): void {
-    // Ensure opacity is between 0.1 and 1.0
-    const validOpacity = Math.min(1.0, Math.max(0.1, opacity));
-    this.updateConfig({ opacity: validOpacity });
-  }  
-  
-  /**
-   * Get the preferred programming language
-   */
-  public getLanguage(): string {
-    const config = this.loadConfig();
-    return config.language || "python";
+    const clamped = Math.max(0.1, Math.min(1.0, opacity));
+    this.updateConfig({ opacity: clamped });
   }
 
   /**
-   * Set the preferred programming language
+   * Get the preferred programming language (default: "python")
+   */
+  public getLanguage(): string {
+    return this.loadConfig().language || "python";
+  }
+
+  /**
+   * Set the preferred programming language.
+   * @param language - The programming language to set (e.g., "python", "javascript").
    */
   public setLanguage(language: string): void {
-    this.updateConfig({ language });
+    this.updateConfig({ language: language.trim() });
   }
   
   /**
-   * Test API key with the selected provider
+   * Test API key with the selected provider, or auto-detect if not specified.
    */
-  public async testApiKey(apiKey: string, provider?: "openai" | "gemini" | "anthropic"): Promise<{valid: boolean, error?: string}> {
-    // Auto-detect provider based on key format if not specified
-    if (!provider) {
-      if (apiKey.trim().startsWith('sk-')) {
-        if (apiKey.trim().startsWith('sk-ant-')) {
-          provider = "anthropic";
-          console.log("Auto-detected Anthropic API key format for testing");
-        } else {
-          provider = "openai";
-          console.log("Auto-detected OpenAI API key format for testing");
-        }
+  public async testApiKey(
+    apiKey: string,
+    provider?: "openai" | "gemini" | "anthropic"
+  ): Promise<{ valid: boolean; error?: string }> {
+    const trimmedKey = apiKey.trim();
+
+    // Auto-detect provider if not specified
+    let detectedProvider = provider;
+    if (!detectedProvider) {
+      if (trimmedKey.startsWith("sk-ant-")) {
+        detectedProvider = "anthropic";
+        console.log("Auto-detected Anthropic API key format for testing");
+      } else if (trimmedKey.startsWith("sk-")) {
+        detectedProvider = "openai";
+        console.log("Auto-detected OpenAI API key format for testing");
       } else {
-        provider = "gemini";
+        detectedProvider = "gemini";
         console.log("Using Gemini API key format for testing (default)");
       }
     }
-    
-    if (provider === "openai") {
-      return this.testOpenAIKey(apiKey);
-    } else if (provider === "gemini") {
-      return this.testGeminiKey(apiKey);
-    } else if (provider === "anthropic") {
-      return this.testAnthropicKey(apiKey);
+
+    switch (detectedProvider) {
+      case "openai":
+        return this.testOpenAIKey(apiKey);
+      case "gemini":
+        return this.testGeminiKey(apiKey);
+      case "anthropic":
+        return this.testAnthropicKey(apiKey);
+      default:
+        return { valid: false, error: "Unknown API provider" };
     }
-    
-    return { valid: false, error: "Unknown API provider" };
   }
   
   /**

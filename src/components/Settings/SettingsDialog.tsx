@@ -56,8 +56,8 @@ const modelCategories: ModelCategory[] = [
     ],
     geminiModels: [
       {
-        id: "gemini-2.5-pro-preview-05-06",
-        name: "gemini-2.5-pro-preview-05-06",
+        id: "gemini-2.5-flash-preview-05-20",
+        name: "gemini-2.5-flash-preview-05-20",
         description: "Best overall performance for problem extraction"
       },
       {
@@ -107,13 +107,14 @@ const modelCategories: ModelCategory[] = [
         description: "Strong overall performance for coding tasks"
       },
       {
-        id: "gemini-2.5-flash-preview-05-20	",
+        id: "gemini-2.5-flash-preview-05-20",
         name: "gemini-2.5-flash-preview-05-20	",
         description: "Faster, more cost-effective option"
       }
     ],
     anthropicModels: [
       {
+        
         id: "claude-3-7-sonnet-20250219",
         name: "Claude 3.7 Sonnet",
         description: "Strong overall performance for coding tasks"
