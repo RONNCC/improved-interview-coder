@@ -98,6 +98,11 @@ const modelCategories: ModelCategory[] = [
         id: "o4-mini",
         name: "o4-mini",
         description: "Faster, more cost-effective option"
+      },
+      {
+        id: "gpt-4.5-preview-2025-02-27",
+        name: "gpt-4.5-preview-2025-02-27",
+        description: "Prototype"
       }
     ],
     geminiModels: [
@@ -144,7 +149,7 @@ const modelCategories: ModelCategory[] = [
       {
         id: "o4-mini",
         name: "o4-mini",
-        description: "Faster, more cost-effective option"
+        description: "reasoning model"
       }
     ],
     geminiModels: [
@@ -246,7 +251,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
     setApiProvider(provider);
     // Reset models to correct defaults when changing provider
     if (provider === PROVIDERS.OPENAI) {
-      setExtractionModel("gpt-4.1");
+      setExtractionModel("gpt-4o");
       setSolutionModel("gpt-4.1");
       setDebuggingModel("gpt-4.1");
     } else if (provider === PROVIDERS.GEMINI) {

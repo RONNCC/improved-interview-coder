@@ -63,7 +63,11 @@ export class ConfigHelper extends EventEmitter {
     const allowedModelsMap: Record<"openai" | "gemini" | "anthropic", string[]> = {
       openai: [
         "gpt-4.1",
-        "o4-mini"
+        "o4-mini",
+        "gpt-4o",
+        "gpt-3.5-turbo",
+        "o3",
+        "gpt-4.5-preview-2025-02-27"
       ],
       gemini: [
         "gemini-2.5-pro-preview-05-06",

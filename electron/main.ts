@@ -451,14 +451,14 @@ function moveWindowVertical(updateFn: (y: number) => number): void {
     state.screenHeight + ((state.windowSize?.height || 0) * 2) / 3
 
   // Log the current state and limits
-  console.log({
-    newY,
-    maxUpLimit,
-    maxDownLimit,
-    screenHeight: state.screenHeight,
-    windowHeight: state.windowSize?.height,
-    currentY: state.currentY
-  })
+  // console.log({
+  //   newY,
+  //   maxUpLimit,
+  //   maxDownLimit,
+  //   screenHeight: state.screenHeight,
+  //   windowHeight: state.windowSize?.height,
+  //   currentY: state.currentY
+  // })
 
   // Only update if within bounds
   if (newY >= maxUpLimit && newY <= maxDownLimit) {

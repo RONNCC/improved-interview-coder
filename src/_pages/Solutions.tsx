@@ -128,6 +128,18 @@ export const ComplexitySection = ({
     // Concat Big O notation to the complexity
     return `O(${complexity})`;
   };
+
+  // Helper to render complexity with line breaks preserved
+  const renderComplexity = (complexity: string) => {
+    // Split on \n and interleave <br />
+    const parts = complexity.split('\n');
+    return parts.map((part, idx) => (
+      <React.Fragment key={idx}>
+        {part}
+        {idx < parts.length - 1 && <br />}
+      </React.Fragment>
+    ));
+  };
   
   const formattedTimeComplexity = formatComplexity(timeComplexity);
   const formattedSpaceComplexity = formatComplexity(spaceComplexity);
@@ -147,7 +159,8 @@ export const ComplexitySection = ({
             <div className="flex items-start gap-2">
               <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
               <div>
-                <strong>Time:</strong> {formattedTimeComplexity}
+                <strong>Time:</strong>{" "}
+                {renderComplexity(formattedTimeComplexity)}
               </div>
             </div>
           </div>
@@ -155,7 +168,8 @@ export const ComplexitySection = ({
             <div className="flex items-start gap-2">
               <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
               <div>
-                <strong>Space:</strong> {formattedSpaceComplexity}
+                <strong>Space:</strong>{" "}
+                {renderComplexity(formattedSpaceComplexity)}
               </div>
             </div>
           </div>
@@ -170,12 +184,16 @@ export interface SolutionsProps {
   credits: number
   currentLanguage: string
   setLanguage: (language: string) => void
+  additionalText: string
+  setAdditionalText: (text: string) => void
 }
 const Solutions: React.FC<SolutionsProps> = ({
   setView,
   credits,
   currentLanguage,
-  setLanguage
+  setLanguage,
+  additionalText,
+  setAdditionalText
 }) => {
   const queryClient = useQueryClient()
   const contentRef = useRef<HTMLDivElement>(null)
@@ -498,6 +516,8 @@ const Solutions: React.FC<SolutionsProps> = ({
             credits={credits}
             currentLanguage={currentLanguage}
             setLanguage={setLanguage}
+            additionalText={additionalText}
+            setAdditionalText={setAdditionalText}
           />
 
           {/* Main Content - Modified width constraints */}
