@@ -11,6 +11,8 @@ interface QueueCommandsProps {
   credits: number
   currentLanguage: string
   setLanguage: (language: string) => void
+  additionalText: string
+  setAdditionalText: (text: string) => void
 }
 
 const QueueCommands: React.FC<QueueCommandsProps> = ({
@@ -18,7 +20,9 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
   screenshotCount = 0,
   credits,
   currentLanguage,
-  setLanguage
+  setLanguage,
+  additionalText,
+  setAdditionalText
 }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -158,37 +162,47 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
 
           {/* Solve Command */}
           {screenshotCount > 0 && (
-            <div
-              className={`flex flex-col cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
-                credits <= 0 ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-              onClick={async () => {
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={additionalText}
+                onChange={(e) => setAdditionalText(e.target.value)}
+                placeholder="Additional context..."
+                className="bg-white/10 border border-white/20 rounded-md px-2 py-1 text-[11px] text-white/90 placeholder-white/50 focus:outline-none focus:border-white/40 min-w-[120px] max-w-[200px]"
+              />
+              <div
+                id="solve-button"
+                className={`flex flex-col cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
+                  credits <= 0 ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                onClick={async () => {
 
-                try {
-                  const result =
-                    await window.electronAPI.triggerProcessScreenshots()
-                  if (!result.success) {
-                    console.error(
-                      "Failed to process screenshots:",
-                      result.error
-                    )
+                  try {
+                    const result =
+                      await window.electronAPI.triggerProcessScreenshots(additionalText)
+                    if (!result.success) {
+                      console.error(
+                        "Failed to process screenshots:",
+                        result.error
+                      )
+                      showToast("Error", "Failed to process screenshots", "error")
+                    }
+                  } catch (error) {
+                    console.error("Error processing screenshots:", error)
                     showToast("Error", "Failed to process screenshots", "error")
                   }
-                } catch (error) {
-                  console.error("Error processing screenshots:", error)
-                  showToast("Error", "Failed to process screenshots", "error")
-                }
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] leading-none">Solve </span>
-                <div className="flex gap-1 ml-2">
-                  <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
-                    {COMMAND_KEY}
-                  </button>
-                  <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
-                    ↵
-                  </button>
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] leading-none">Solve </span>
+                  <div className="flex gap-1 ml-2">
+                    <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
+                      {COMMAND_KEY}
+                    </button>
+                    <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
+                      ↵
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -333,7 +347,7 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
 
                           try {
                             const result =
-                              await window.electronAPI.triggerProcessScreenshots()
+                              await window.electronAPI.triggerProcessScreenshots(additionalText)
                             if (!result.success) {
                               console.error(
                                 "Failed to process screenshots:",

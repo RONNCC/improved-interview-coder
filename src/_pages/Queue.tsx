@@ -21,13 +21,17 @@ interface QueueProps {
   credits: number
   currentLanguage: string
   setLanguage: (language: string) => void
+  additionalText: string
+  setAdditionalText: (text: string) => void
 }
 
 const Queue: React.FC<QueueProps> = ({
   setView,
   credits,
   currentLanguage,
-  setLanguage
+  setLanguage,
+  additionalText,
+  setAdditionalText
 }) => {
   const { showToast } = useToast()
 
@@ -152,6 +156,8 @@ const Queue: React.FC<QueueProps> = ({
             credits={credits}
             currentLanguage={currentLanguage}
             setLanguage={setLanguage}
+            additionalText={additionalText}
+            setAdditionalText={setAdditionalText}
           />
         </div>
       </div>

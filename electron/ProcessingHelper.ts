@@ -215,7 +215,7 @@ export class ProcessingHelper {
     }
   }
 
-  public async processScreenshots(): Promise<void> {
+  public async processScreenshots(additionalText?: string): Promise<void> {
     const mainWindow = this.deps.getMainWindow()
     if (!mainWindow) return
 
@@ -305,7 +305,7 @@ export class ProcessingHelper {
           throw new Error("Failed to load screenshot data");
         }
 
-        const result = await this.processScreenshotsHelper(validScreenshots, signal)
+        const result = await this.processScreenshotsHelper(validScreenshots, signal, additionalText)
 
         if (!result.success) {
           console.log("Processing failed:", result.error)
@@ -424,7 +424,8 @@ export class ProcessingHelper {
 
         const result = await this.processExtraScreenshotsHelper(
           validScreenshots,
-          signal
+          signal,
+          additionalText
         )
 
         if (result.success) {
@@ -459,7 +460,8 @@ export class ProcessingHelper {
 
   private async processScreenshotsHelper(
     screenshots: Array<{ path: string; data: string }>,
-    signal: AbortSignal
+    signal: AbortSignal,
+    additionalText?: string
   ) {
     try {
       const config = configHelper.loadConfig();
@@ -792,7 +794,7 @@ export class ProcessingHelper {
     }
   }
 
-  private async generateSolutionsHelper(signal: AbortSignal) {
+  private async generateSolutionsHelper(signal: AbortSignal, additionalText?: string) {
     try {
       const problemInfo = this.deps.getProblemInfo();
       const language = await this.getLanguage();
@@ -801,7 +803,10 @@ export class ProcessingHelper {
 
       if (!problemInfo || !problemInfo.problem_statement) {
         console.error("No problem statement available for solution generation.", problemInfo);
-        return { success: false, error: "Problem statement extraction failed. Please try again with clearer screenshots." };
+        return {
+          success: false,
+          error: "Problem statement extraction failed. Please try again with clearer screenshots."
+        };
       }
 
       console.log("Problem info before solution generation:", problemInfo);
@@ -845,7 +850,13 @@ For complexity explanations:
 Your solution should be efficient, well-commented, and handle edge cases.
 `;
 
+      // Add additional context if provided
+      if (additionalText?.trim()) {
+        promptText += `\n\nADDITIONAL CONTEXT:\n${additionalText.trim()}\n\nPlease use this context in your solution.`;
+      }
       let responseContent;
+
+      console.log("Solution Prompt text:", promptText);
       
 
       if (config.apiProvider === ApiProvider.OpenAI) {
@@ -1101,8 +1112,10 @@ Your solution should be efficient, well-commented, and handle edge cases.
 
   private async processExtraScreenshotsHelper(
     screenshots: Array<{ path: string; data: string }>,
-    signal: AbortSignal
+    signal: AbortSignal,
+    additionalText?: string
   ) {
+    console.log("processExtraScreenshotsHelper received additionalText:", additionalText);
     try {
       const problemInfo = this.deps.getProblemInfo();
       const language = await this.getLanguage();

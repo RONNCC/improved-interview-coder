@@ -149,8 +149,8 @@ const electronAPI = {
   // External URL handler
   openLink: (url: string) => shell.openExternal(url),
   triggerScreenshot: () => ipcRenderer.invoke("trigger-screenshot"),
-  triggerProcessScreenshots: () =>
-    ipcRenderer.invoke("trigger-process-screenshots"),
+  triggerProcessScreenshots: (additionalText?: string) =>
+    ipcRenderer.invoke("trigger-process-screenshots", additionalText),
   triggerReset: () => ipcRenderer.invoke("trigger-reset"),
   triggerMoveLeft: () => ipcRenderer.invoke("trigger-move-left"),
   triggerMoveRight: () => ipcRenderer.invoke("trigger-move-right"),
@@ -236,7 +236,15 @@ const electronAPI = {
       ipcRenderer.removeListener("delete-last-screenshot", subscription)
     }
   },
-  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot")
+  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot"),
+
+  onShortcutProcessScreenshots: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("shortcut-process-screenshots", subscription)
+    return () => {
+      ipcRenderer.removeListener("shortcut-process-screenshots", subscription)
+    }
+  }
 }
 
 // Before exposing the API

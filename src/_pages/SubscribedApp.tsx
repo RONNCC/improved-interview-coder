@@ -18,6 +18,7 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const [view, setView] = useState<"queue" | "solutions" | "debug">("queue")
+  const [additionalText, setAdditionalText] = useState("")
   const containerRef = useRef<HTMLDivElement>(null)
   const { showToast } = useToast()
 
@@ -132,7 +133,29 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
       })
     ]
     return () => cleanupFunctions.forEach((fn) => fn())
-  }, [view])
+  }, [view, queryClient, showToast])
+
+  // Listen for the keyboard shortcut from the main process
+  useEffect(() => {
+    const handleShortcut = () => {
+      // This function is called when the shortcut is pressed.
+      // We find the appropriate button in the DOM and click it programmatically.
+      const solveButton = document.getElementById("solve-button");
+      const debugButton = document.getElementById("debug-button");
+
+      if (view === 'queue' && solveButton) {
+        solveButton.click();
+      } else if (view === 'solutions' && debugButton) {
+        debugButton.click();
+      }
+    }
+
+    const unsubscribe = window.electronAPI.onShortcutProcessScreenshots(handleShortcut)
+
+    return () => {
+      unsubscribe()
+    }
+  }, [view]); // Rerun when the view changes
 
   return (
     <div ref={containerRef} className="min-h-0">
@@ -142,6 +165,8 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
           credits={credits}
           currentLanguage={currentLanguage}
           setLanguage={setLanguage}
+          additionalText={additionalText}
+          setAdditionalText={setAdditionalText}
         />
       ) : view === "solutions" ? (
         <Solutions
@@ -149,6 +174,8 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
           credits={credits}
           currentLanguage={currentLanguage}
           setLanguage={setLanguage}
+          additionalText={additionalText}
+          setAdditionalText={setAdditionalText}
         />
       ) : null}
     </div>

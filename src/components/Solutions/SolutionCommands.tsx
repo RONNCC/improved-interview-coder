@@ -13,6 +13,8 @@ export interface SolutionCommandsProps {
   credits: number
   currentLanguage: string
   setLanguage: (language: string) => void
+  additionalText: string
+  setAdditionalText: (text: string) => void
 }
 
 const handleSignOut = async () => {
@@ -35,7 +37,9 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
   extraScreenshots = [],
   credits,
   currentLanguage,
-  setLanguage
+  setLanguage,
+  additionalText,
+  setAdditionalText
 }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -123,31 +127,43 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
                 </div>
               </div>
 
-              {extraScreenshots.length > 0 && (
+              {/* Additional Context Field - Always visible in solutions view */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={additionalText}
+                  onChange={(e) => setAdditionalText(e.target.value)}
+                  placeholder="Additional context..."
+                  className="bg-white/10 border border-white/20 rounded-md px-2 py-1 text-[11px] text-white/90 placeholder-white/50 focus:outline-none focus:border-white/40 min-w-[120px] max-w-[200px]"
+                />
                 <div
-                  className="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors"
+                  id="debug-button"
+                  className={`flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
+                    extraScreenshots.length === 0 ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
                   onClick={async () => {
+                    if (extraScreenshots.length === 0) return; // Prevent click if disabled
                     try {
                       const result =
-                        await window.electronAPI.triggerProcessScreenshots()
+                        await window.electronAPI.triggerProcessScreenshots(additionalText);
                       if (!result.success) {
                         console.error(
                           "Failed to process screenshots:",
                           result.error
-                        )
+                        );
                         showToast(
                           "Error",
                           "Failed to process screenshots",
                           "error"
-                        )
+                        );
                       }
                     } catch (error) {
-                      console.error("Error processing screenshots:", error)
+                      console.error("Error processing screenshots:", error);
                       showToast(
                         "Error",
                         "Failed to process screenshots",
                         "error"
-                      )
+                      );
                     }
                   }}
                 >
@@ -161,7 +177,7 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
                     </button>
                   </div>
                 </div>
-              )}
+              </div>
             </>
           )}
 
@@ -325,51 +341,57 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
                           </div>
 
                           {extraScreenshots.length > 0 && (
-                            <div
-                              className="cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors"
-                              onClick={async () => {
-                                try {
-                                  const result =
-                                    await window.electronAPI.triggerProcessScreenshots()
-                                  if (!result.success) {
-                                    console.error(
-                                      "Failed to process screenshots:",
-                                      result.error
-                                    )
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={additionalText}
+                                onChange={(e) => setAdditionalText(e.target.value)}
+                                placeholder="Additional context..."
+                                className="bg-white/10 border border-white/20 rounded-md px-2 py-1 text-[11px] text-white/90 placeholder-white/50 focus:outline-none focus:border-white/40 min-w-[120px] max-w-[200px]"
+                              />
+                              <div
+                                className="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors"
+                                onClick={async () => {
+                                  try {
+                                    const result =
+                                      await window.electronAPI.triggerProcessScreenshots(additionalText)
+                                    if (!result.success) {
+                                      console.error(
+                                        "Failed to process screenshots:",
+                                        result.error
+                                      )
+                                      showToast(
+                                        "Error",
+                                        "Failed to process screenshots",
+                                        "error"
+                                      )
+                                    }
+                                  } catch (error) {
+                                    console.error("Error processing screenshots:", error)
                                     showToast(
                                       "Error",
                                       "Failed to process screenshots",
                                       "error"
                                     )
                                   }
-                                } catch (error) {
-                                  console.error(
-                                    "Error processing screenshots:",
-                                    error
-                                  )
-                                  showToast(
-                                    "Error",
-                                    "Failed to process screenshots",
-                                    "error"
-                                  )
-                                }
-                              }}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="truncate">Debug</span>
-                                <div className="flex gap-1 flex-shrink-0">
-                                  <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
-                                    {COMMAND_KEY}
-                                  </span>
-                                  <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
-                                    ↵
-                                  </span>
+                                }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="truncate">Debug</span>
+                                  <div className="flex gap-1 flex-shrink-0">
+                                    <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                                      {COMMAND_KEY}
+                                    </span>
+                                    <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                                      ↵
+                                    </span>
+                                  </div>
                                 </div>
+                                <p className="text-[10px] leading-relaxed text-white/70 truncate mt-1">
+                                  Generate new solutions based on all previous and
+                                  newly added screenshots.
+                                </p>
                               </div>
-                              <p className="text-[10px] leading-relaxed text-white/70 truncate mt-1">
-                                Generate new solutions based on all previous and
-                                newly added screenshots.
-                              </p>
                             </div>
                           )}
                         </>

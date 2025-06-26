@@ -52,8 +52,12 @@ export class ShortcutsHelper {
       }
     })
 
-    globalShortcut.register("CommandOrControl+Enter", async () => {
-      await this.deps.processingHelper?.processScreenshots()
+    globalShortcut.register("CommandOrControl+Enter", () => {
+      console.log("Command/Ctrl + Enter pressed. Triggering solve/debug in renderer.");
+      const mainWindow = this.deps.getMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("shortcut-process-screenshots");
+      }
     })
 
     globalShortcut.register("CommandOrControl+R", () => {

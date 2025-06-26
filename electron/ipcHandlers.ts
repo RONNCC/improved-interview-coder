@@ -232,7 +232,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   })
 
   // Process screenshot handlers
-  ipcMain.handle("trigger-process-screenshots", async () => {
+  ipcMain.handle("trigger-process-screenshots", async (event, additionalText?: string) => {
     try {
       // Check for API key before processing
       if (!configHelper.hasApiKey()) {
@@ -243,7 +243,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
         return { success: false, error: "API key required" };
       }
       
-      await deps.processingHelper?.processScreenshots()
+      await deps.processingHelper?.processScreenshots(additionalText)
       return { success: true }
     } catch (error) {
       console.error("Error processing screenshots:", error)
