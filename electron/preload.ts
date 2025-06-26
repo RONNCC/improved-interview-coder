@@ -193,14 +193,6 @@ const electronAPI = {
       ipcRenderer.removeListener("update-downloaded", subscription)
     }
   },
-  decrementCredits: () => ipcRenderer.invoke("decrement-credits"),
-  onCreditsUpdated: (callback: (credits: number) => void) => {
-    const subscription = (_event: any, credits: number) => callback(credits)
-    ipcRenderer.on("credits-updated", subscription)
-    return () => {
-      ipcRenderer.removeListener("credits-updated", subscription)
-    }
-  },
   getPlatform: () => process.platform,
   
   // New methods for OpenAI API integration

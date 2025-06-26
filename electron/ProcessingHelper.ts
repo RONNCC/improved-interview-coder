@@ -28,40 +28,6 @@ export enum ApiProvider {
   Anthropic = "anthropic"
 }
 
-// Interface for Gemini API requests
-interface GeminiMessage {
-  role: string;
-  parts: Array<{
-    text?: string;
-    inlineData?: {
-      mimeType: string;
-      data: string;
-    }
-  }>;
-}
-
-interface GeminiResponse {
-  candidates: Array<{
-    content: {
-      parts: Array<{
-        text: string;
-      }>;
-    };
-    finishReason: string;
-  }>;
-}
-interface AnthropicMessage {
-  role: 'user' | 'assistant';
-  content: Array<{
-    type: 'text' | 'image';
-    text?: string;
-    source?: {
-      type: 'base64';
-      media_type: string;
-      data: string;
-    };
-  }>;
-}
 export class ProcessingHelper {
   private deps: IProcessingHelperDeps
   private screenshotHelper: ScreenshotHelper
@@ -90,61 +56,52 @@ export class ProcessingHelper {
    * Initialize or reinitialize the AI client with current config
    */
   private initializeAIClient(): void {
+    // 1. Reset all clients to a clean state first.
+    this.openaiClient = null;
+    this.geminiClient = null;
+    this.anthropicClient = null;
+
     try {
       const config = configHelper.loadConfig();
-      
-      if (config.apiProvider === ApiProvider.OpenAI) {
-        if (config.apiKey) {
+
+      // 2. Use a "Guard Clause" to handle the missing API key case for all providers at once.
+      if (!config.apiKey) {
+        console.warn(`API key is missing. AI client for provider "${config.apiProvider}" will not be initialized.`);
+        return; // Exit early
+      }
+
+      // 3. Use a switch statement for cleaner, more readable logic.
+      switch (config.apiProvider) {
+        case ApiProvider.OpenAI:
           this.openaiClient = new OpenAI({ 
             apiKey: config.apiKey,
-            timeout: 60000, // 60 second timeout
-            maxRetries: 2   // Retry up to 2 times
+            timeout: 60000,
+            maxRetries: 2
           });
-          this.geminiClient = null;
-          this.anthropicClient = null;
           console.log("OpenAI client initialized successfully");
-        } else {
-          this.openaiClient = null;
-          this.geminiClient = null;
-          this.anthropicClient = null;
-          console.warn("No API key available, OpenAI client not initialized");
-        }
-      } else if (config.apiProvider === ApiProvider.Gemini){
-        // Gemini client initialization
-        this.openaiClient = null;
-        this.anthropicClient = null;
-        if (config.apiKey) {
+          break;
+
+        case ApiProvider.Gemini:
           this.geminiClient = new GoogleGenAI({ apiKey: config.apiKey });
           console.log("Gemini client initialized successfully");
-        } else {
-          this.openaiClient = null;
-          this.geminiClient = null;
-          this.anthropicClient = null;
-          console.warn("No API key available, Gemini client not initialized");
-        }
-      } else if (config.apiProvider === ApiProvider.Anthropic) {
-        // Reset other clients
-        this.openaiClient = null;
-        this.geminiClient = null;
-        if (config.apiKey) {
+          break;
+
+        case ApiProvider.Anthropic:
           this.anthropicClient = new Anthropic({
             apiKey: config.apiKey,
             timeout: 60000,
             maxRetries: 2
           });
           console.log("Anthropic client initialized successfully");
-        } else {
-          this.openaiClient = null;
-          this.geminiClient = null;
-          this.anthropicClient = null;
-          console.warn("No API key available, Anthropic client not initialized");
-        }
+          break;
+        
+        default:
+          // Handle cases where the provider is unknown or unsupported
+          console.warn(`Unknown or unsupported API provider: "${config.apiProvider}"`);
       }
     } catch (error) {
+      // The clients are already null from the top, so no need to reset them again.
       console.error("Failed to initialize AI client:", error);
-      this.openaiClient = null;
-      this.geminiClient = null;
-      this.anthropicClient = null;
     }
   }
 
@@ -165,54 +122,35 @@ export class ProcessingHelper {
     throw new Error("App failed to initialize after 5 seconds")
   }
 
-  private async getCredits(): Promise<number> {
-    const mainWindow = this.deps.getMainWindow()
-    if (!mainWindow) return 999 // Unlimited credits in this version
-
-    try {
-      await this.waitForInitialization(mainWindow)
-      return 999 // Always return sufficient credits to work
-    } catch (error) {
-      console.error("Error getting credits:", error)
-      return 999 // Unlimited credits as fallback
-    }
-  }
-
   private async getLanguage(): Promise<string> {
+    const DEFAULT_LANGUAGE = "python";
+
     try {
-      // Get language from config
+      // Priority 1: Get from config
       const config = configHelper.loadConfig();
       if (config.language) {
         return config.language;
       }
       
-      // Fallback to window variable if config doesn't have language
-      const mainWindow = this.deps.getMainWindow()
+      // Priority 2: Get from window variable
+      const mainWindow = this.deps.getMainWindow();
       if (mainWindow) {
-        try {
-          await this.waitForInitialization(mainWindow)
-          const language = await mainWindow.webContents.executeJavaScript(
-            "window.__LANGUAGE__"
-          )
-
-          if (
-            typeof language === "string" &&
-            language !== undefined &&
-            language !== null
-          ) {
-            return language;
-          }
-        } catch (err) {
-          console.warn("Could not get language from window", err);
+        await this.waitForInitialization(mainWindow);
+        const language = await mainWindow.webContents.executeJavaScript(
+          "window.__LANGUAGE__"
+        );
+        
+        if (typeof language === "string" && language) {
+          return language;
         }
       }
-      
-      // Default fallback
-      return "python";
     } catch (error) {
-      console.error("Error getting language:", error)
-      return "python"
+      // Any error in the above process (config load, JS execution) will be caught here.
+      console.warn("Could not determine language, falling back to default.", error);
     }
+    
+    // Priority 3: Return the default if all else fails
+    return DEFAULT_LANGUAGE;
   }
 
   public async processScreenshots(additionalText?: string): Promise<void> {
