@@ -52,6 +52,11 @@ const modelCategories: ModelCategory[] = [
         id: "o4-mini",
         name: "o4-mini",
         description: "Faster, more cost-effective option"
+      },
+      {
+        id: "gpt-4.1-mini",
+        name: "gpt-4.1-mini",
+        description: "Faster, more cost-effective option"
       }
     ],
     geminiModels: [

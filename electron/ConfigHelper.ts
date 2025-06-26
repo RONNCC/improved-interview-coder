@@ -67,7 +67,8 @@ export class ConfigHelper extends EventEmitter {
         "gpt-4o",
         "gpt-3.5-turbo",
         "o3",
-        "gpt-4.5-preview-2025-02-27"
+        "gpt-4.5-preview-2025-02-27",
+        "gpt-4.1-mini"
       ],
       gemini: [
         "gemini-2.5-pro-preview-05-06",
