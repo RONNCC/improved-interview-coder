@@ -735,7 +735,7 @@ export class ProcessingHelper {
         );
 
         // Generate solutions after successful extraction
-        const solutionsResult = await this.generateSolutionsHelper(signal);
+        const solutionsResult = await this.generateSolutionsHelper(signal, additionalText);
         if (solutionsResult.success) {
           // Clear any existing extra screenshots before transitioning to solutions view
           this.screenshotHelper.clearExtraScreenshotQueue();
@@ -750,7 +750,10 @@ export class ProcessingHelper {
             this.deps.PROCESSING_EVENTS.SOLUTION_SUCCESS,
             solutionsResult.data
           );
-          return { success: true, data: solutionsResult.data };
+          return {
+            success: true,
+            data: solutionsResult.data
+          };
         } else {
           throw new Error(
             solutionsResult.error || "Failed to generate solutions"
@@ -758,7 +761,10 @@ export class ProcessingHelper {
         }
       }
 
-      return { success: false, error: "Failed to process screenshots" };
+      return {
+        success: false,
+        error: "Failed to process screenshots"
+      };
     } catch (error: any) {
       // If the request was cancelled, don't retry
       if (axios.isCancel(error)) {
@@ -787,9 +793,9 @@ export class ProcessingHelper {
       }
 
       console.error("API Error Details:", error);
-      return { 
-        success: false, 
-        error: error.message || "Failed to process screenshots. Please try again." 
+      return {
+        success: false,
+        error: error.message || "Failed to process screenshots. Please try again."
       };
     }
   }
@@ -820,7 +826,7 @@ export class ProcessingHelper {
       }
 
       // Create prompt for solution generation
-      const promptText = `
+      var promptText = `
 Generate a detailed solution for the following coding problem:
 
 PROBLEM STATEMENT:
@@ -838,8 +844,8 @@ ${problemInfo.example_output || "No example output provided."}
 LANGUAGE: ${language}
 
 I need the response in the following format:
-1. Code: A clean, concise(within reason like dont use None everywhere), optimized implementation in ${language}.
-2. Your Thoughts: A list of key insights and reasoning behind your approach - Like what is the approach to solving here that I can say explain to the engineer asking me this question. 
+1. Code: A clean, concise(within reason like dont use None everywhere or confusing binary operations), somewhat optimized implementation in ${language}.
+2. Your Thoughts: A list of key insights and reasoning behind your approach - Like what is the approach to solving here that I can say explain to the engineer asking me this question and how did we decide to optimize this.
 3. Time complexity: O(X) with a detailed explanation (at least 2 sentences). Try to breakdown the answer in math,  like if there's a recurrence relation.
 4. Space complexity: O(X) with a detailed explanation (at least 2 sentences).  Try to breakdown the answer in math, like if there's a recurrence relation.
 
@@ -847,8 +853,7 @@ For complexity explanations:
 - Time complexity should include a breakdown of any major top-level operations such as loops, recursion, sorting, or data structure operations. Explain how often each one runs and why they contribute to the overall time complexity. Avoid vague summaries—be precise about what drives the cost.
 - Space complexity should explain all additional memory used beyond the input, including any data structures, caches, recursion stacks, etc. If space is constant, state why it does not grow with input size. If it's linear or more, clarify which parts of the algorithm are responsible.
 
-Your solution should be efficient, well-commented, and handle edge cases.
-`;
+Your solution should be efficient, well-commented, and handle edge cases.`;
 
       // Add additional context if provided
       if (additionalText?.trim()) {
@@ -1091,7 +1096,13 @@ Your solution should be efficient, well-commented, and handle edge cases.
         space_complexity: spaceComplexity
       };
 
-      return { success: true, data: formattedResponse };
+      console.log("Formatted Solution Response:", formattedResponse);
+
+
+      return {
+        success: true,
+        data: formattedResponse
+      };
     } catch (error: any) {
       let errorMsg = "Failed to generate solution";
 
@@ -1106,7 +1117,10 @@ Your solution should be efficient, well-commented, and handle edge cases.
       }
 
       console.error("Solution generation error:", error);
-      return { success: false, error: errorMsg };
+      return {
+        success: false,
+        error: errorMsg
+      };
     }
   }
 
@@ -1134,23 +1148,8 @@ Your solution should be efficient, well-commented, and handle edge cases.
         });
       }
 
-      // Prepare the images for the API call
-      const imageDataList = screenshots.map(screenshot => screenshot.data);
-      
-      let debugContent;
-      
-      if (config.apiProvider === ApiProvider.OpenAI) {
-        if (!this.openaiClient) {
-          return {
-            success: false,
-            error: "OpenAI API key not configured. Please check your settings."
-          };
-        }
-        
-        const messages = [
-          {
-            role: "system" as const, 
-            content: `You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
+      // --- Unified Debug Prompts ---
+      const systemDebugPrompt = `You are a coding interview assistant helping debug and improve solutions. Analyze the user's screenshots and text to provide detailed debugging help.
 
 Your response MUST follow this exact structure with these section headers (use ### for headers):
 ### Issues Identified
@@ -1168,18 +1167,36 @@ Here provide a clear explanation of why the changes are needed
 ### Key Points
 - Summary bullet points of the most important takeaways
 
-If you include code examples, use proper markdown code blocks with language specification (e.g. \`\`\`java).`
+If you include code examples, use proper markdown code blocks with language specification (e.g. \`\`\`java).`;
+
+      const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution. The attached screenshots show my current code, error messages, or test case failures.${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}`: ""}`;
+      // --- End of Unified Prompts ---
+
+
+      // Prepare the images for the API call
+      const imageDataList = screenshots.map(screenshot => screenshot.data);
+      
+      let debugContent;
+      
+      if (config.apiProvider === ApiProvider.OpenAI) {
+        if (!this.openaiClient) {
+          return {
+            success: false,
+            error: "OpenAI API key not configured. Please check your settings."
+          };
+        }
+        
+        const messages = [
+          {
+            role: "system" as const, 
+            content: systemDebugPrompt
           },
           {
             role: "user" as const,
             content: [
               {
                 type: "text" as const, 
-                text: `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution. Here are screenshots of my code, the errors or test cases. Please provide a detailed analysis with:
-1. What issues you found in my code
-2. Specific improvements and corrections
-3. Any optimizations that would make the solution better
-4. A clear explanation of the changes needed` 
+                text: userDebugPrompt 
               },
               ...imageDataList.map(data => ({
                 type: "image_url" as const,
@@ -1203,6 +1220,7 @@ If you include code examples, use proper markdown code blocks with language spec
         });
         
         debugContent = debugResponse.choices[0].message.content;
+
       } else if (config.apiProvider === ApiProvider.Gemini)  {
         if (!this.geminiClient) {
           return {
@@ -1212,33 +1230,11 @@ If you include code examples, use proper markdown code blocks with language spec
         }
 
         try {
-          const debugPrompt = `
-You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
-
-I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution.
-
-YOUR RESPONSE MUST FOLLOW THIS EXACT STRUCTURE WITH THESE SECTION HEADERS:
-### Issues Identified
-- List each issue as a bullet point with clear explanation
-
-### Specific Improvements and Corrections
-- List specific code changes needed as bullet points
-
-### Optimizations
-- List any performance optimizations if applicable
-
-### Explanation of Changes Needed
-Here provide a clear explanation of why the changes are needed
-
-### Key Points
-- Summary bullet points of the most important takeaways
-
-If you include code examples, use proper markdown code blocks with language specification (e.g. \`\`\`java).
-`;
-
-          // Prepare the content parts: text prompt + images as inlineData
+          // Gemini and Anthropic models work best with a single, combined prompt
+          // instead of separate system/user roles like OpenAI.
+          const combinedPrompt = `${systemDebugPrompt}\n\n${userDebugPrompt}`;
           const contentParts = [
-            { text: debugPrompt },
+            { text: combinedPrompt },
             ...imageDataList.map(data => ({
               inlineData: {
                 mimeType: "image/png",
@@ -1262,7 +1258,6 @@ If you include code examples, use proper markdown code blocks with language spec
             }
           });
 
-          // The SDK returns a response object with a 'text' property for the main content
           if (!response || !response.text || response.text.trim() === "") {
             throw new Error("Empty response from Gemini API");
           }
@@ -1284,37 +1279,16 @@ If you include code examples, use proper markdown code blocks with language spec
         }
         
         try {
-          const debugPrompt = `
-You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
-
-I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution.
-
-YOUR RESPONSE MUST FOLLOW THIS EXACT STRUCTURE WITH THESE SECTION HEADERS:
-### Issues Identified
-- List each issue as a bullet point with clear explanation
-
-### Specific Improvements and Corrections
-- List specific code changes needed as bullet points
-
-### Optimizations
-- List any performance optimizations if applicable
-
-### Explanation of Changes Needed
-Here provide a clear explanation of why the changes are needed
-
-### Key Points
-- Summary bullet points of the most important takeaways
-
-If you include code examples, use proper markdown code blocks with language specification.
-`;
-
+          // Gemini and Anthropic models work best with a single, combined prompt
+          // instead of separate system/user roles like OpenAI.
+          const combinedPrompt = `${systemDebugPrompt}\n\n${userDebugPrompt}`;
           const messages = [
             {
               role: "user" as const,
               content: [
                 {
                   type: "text" as const,
-                  text: debugPrompt
+                  text: combinedPrompt
                 },
                 ...imageDataList.map(data => ({
                   type: "image" as const,
@@ -1346,21 +1320,20 @@ If you include code examples, use proper markdown code blocks with language spec
         } catch (error: any) {
           console.error("Error using Anthropic API for debugging:", error);
           
-          // Add specific handling for Claude's limitations
           if (error.status === 429) {
-            return {
-              success: false,
-              error: "Claude API rate limit exceeded. Please wait a few minutes before trying again."
+            return { 
+              success: false, 
+              error: "Claude API rate limit exceeded. Please wait a few minutes before trying again." 
             };
           } else if (error.status === 413 || (error.message && error.message.includes("token"))) {
-            return {
-              success: false,
+            return { 
+              success: false, 
               error: "Your screenshots contain too much information for Claude to process. Switch to OpenAI or Gemini in settings which can handle larger inputs."
             };
           }
           
-          return {
-            success: false,
+          return { 
+            success: false, 
             error: "Failed to process debug request with Anthropic API. Please check your API key or try again later."
           };
         }
@@ -1403,7 +1376,10 @@ If you include code examples, use proper markdown code blocks with language spec
       };
     } catch (error: any) {
       console.error("Debug processing error:", error);
-      return { success: false, error: error.message || "Failed to process debug request" };
+      return { 
+        success: false, 
+        error: error.message || "Failed to process debug request" 
+      };
     }
   }
 
