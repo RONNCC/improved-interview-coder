@@ -60,11 +60,27 @@ export interface ElectronAPI {
   openSettingsPortal: () => Promise<void>
   getPlatform: () => string
   
-  // New methods for OpenAI integration
-  getConfig: () => Promise<{ apiKey: string; model: string }>
-  updateConfig: (config: { apiKey?: string; model?: string }) => Promise<boolean>
+  // New methods for OpenAI API integration
+  getConfig: () => Promise<{ 
+    apiKeys: Record<ApiProvider, string>; 
+    apiProvider: ApiProvider; 
+    extractionModel: string; 
+    solutionModel: string; 
+    debuggingModel: string; 
+    language: string; 
+    opacity: number; 
+  }>
+  updateConfig: (config: { 
+    apiKeys?: Record<ApiProvider, string>; 
+    apiProvider?: ApiProvider; 
+    extractionModel?: string; 
+    solutionModel?: string; 
+    debuggingModel?: string; 
+    language?: string; 
+    opacity?: number; 
+  }) => Promise<boolean>
   checkApiKey: () => Promise<boolean>
-  validateApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
+  validateApiKey: (apiKey: string, provider?: ApiProvider) => Promise<{ valid: boolean; error?: string }>
   openLink: (url: string) => void
   onApiKeyInvalid: (callback: () => void) => () => void
   removeListener: (eventName: string, callback: (...args: any[]) => void) => void

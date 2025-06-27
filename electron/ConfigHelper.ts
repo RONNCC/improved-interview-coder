@@ -5,9 +5,10 @@ import { app } from "electron"
 import { EventEmitter } from "events"
 import { OpenAI } from "openai"
 import { ApiProvider } from "../src/types/electron"
+import { PROVIDER_BACKEND_CONFIGS } from "../src/config/providers"
 
 export interface AppConfig {
-  apiKey: string;
+  apiKeys: Record<ApiProvider, string>;
   apiProvider: ApiProvider;
   extractionModel: string;
   solutionModel: string;
@@ -21,56 +22,24 @@ interface ModelConfig {
   defaultModel: string;
   keyPrefix: string;
   keyPattern: RegExp;
+  displayName: string;
+  description: string;
 }
 
 export class ConfigHelper extends EventEmitter {
   private configPath: string;
   
+  // Use centralized provider registry
+  private readonly providerRegistry: Record<ApiProvider, ModelConfig> = PROVIDER_BACKEND_CONFIGS;
+
   private readonly defaultConfig: AppConfig = {
-    apiKey: "",
+    apiKeys: this.createEmptyApiKeys(),
     apiProvider: ApiProvider.Gemini,
     extractionModel: "gemini-2.0-flash",
     solutionModel: "gemini-2.0-flash",
     debuggingModel: "gemini-2.0-flash",
     language: "python",
     opacity: 1.0
-  };
-
-  private readonly providerConfigs: Record<ApiProvider, ModelConfig> = {
-    [ApiProvider.OpenAI]: {
-      models: [
-        "gpt-4.1",
-        "o4-mini",
-        "gpt-4o",
-        "gpt-3.5-turbo",
-        "o3",
-        "gpt-4.5-preview-2025-02-27",
-        "gpt-4.1-mini"
-      ],
-      defaultModel: "gpt-4o",
-      keyPrefix: "sk-",
-      keyPattern: /^sk-[a-zA-Z0-9]{32,}$/
-    },
-    [ApiProvider.Gemini]: {
-      models: [
-        "gemini-2.5-pro-preview-05-06",
-        "gemini-2.0-flash",
-        "gemini-2.5-flash-preview-05-20"
-      ],
-      defaultModel: "gemini-2.0-flash",
-      keyPrefix: "",
-      keyPattern: /^[a-zA-Z0-9]{10,}$/
-    },
-    [ApiProvider.Anthropic]: {
-      models: [
-        "claude-3-7-sonnet-20250219",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-opus-20240229"
-      ],
-      defaultModel: "claude-3-7-sonnet-20250219",
-      keyPrefix: "sk-ant-",
-      keyPattern: /^sk-ant-[a-zA-Z0-9]{32,}$/
-    }
   };
 
   constructor() {
@@ -109,7 +78,7 @@ export class ConfigHelper extends EventEmitter {
   }
 
   private sanitizeModel(model: string, provider: ApiProvider): string {
-    const config = this.providerConfigs[provider];
+    const config = this.providerRegistry[provider];
     if (!config.models.includes(model)) {
       console.warn(
         `Invalid ${provider} model specified: ${model}. Using default: ${config.defaultModel}`
@@ -120,7 +89,7 @@ export class ConfigHelper extends EventEmitter {
   }
 
   private validateApiKeyFormat(apiKey: string, provider: ApiProvider): boolean {
-    const config = this.providerConfigs[provider];
+    const config = this.providerRegistry[provider];
     return config.keyPattern.test(apiKey.trim());
   }
 
@@ -129,7 +98,7 @@ export class ConfigHelper extends EventEmitter {
     solutionModel: string;
     debuggingModel: string;
   } {
-    const defaultModel = this.providerConfigs[provider].defaultModel;
+    const defaultModel = this.providerRegistry[provider].defaultModel;
     return {
       extractionModel: defaultModel,
       solutionModel: defaultModel,
@@ -147,28 +116,68 @@ export class ConfigHelper extends EventEmitter {
       const configData = fs.readFileSync(this.configPath, 'utf8');
       const config = JSON.parse(configData);
       
+      // Migrate old config format if needed
+      const migratedConfig = this.migrateConfigIfNeeded(config);
+      
       // Ensure valid provider
-      if (!Object.values(ApiProvider).includes(config.apiProvider)) {
-        config.apiProvider = ApiProvider.Gemini;
+      if (!Object.values(ApiProvider).includes(migratedConfig.apiProvider)) {
+        migratedConfig.apiProvider = ApiProvider.Gemini;
       }
       
       // Sanitize models
-      const provider = config.apiProvider as ApiProvider;
-      if (config.extractionModel) {
-        config.extractionModel = this.sanitizeModel(config.extractionModel, provider);
+      const provider = migratedConfig.apiProvider as ApiProvider;
+      if (migratedConfig.extractionModel) {
+        migratedConfig.extractionModel = this.sanitizeModel(migratedConfig.extractionModel, provider);
       }
-      if (config.solutionModel) {
-        config.solutionModel = this.sanitizeModel(config.solutionModel, provider);
+      if (migratedConfig.solutionModel) {
+        migratedConfig.solutionModel = this.sanitizeModel(migratedConfig.solutionModel, provider);
       }
-      if (config.debuggingModel) {
-        config.debuggingModel = this.sanitizeModel(config.debuggingModel, provider);
+      if (migratedConfig.debuggingModel) {
+        migratedConfig.debuggingModel = this.sanitizeModel(migratedConfig.debuggingModel, provider);
       }
       
-      return { ...this.defaultConfig, ...config };
+      return { ...this.defaultConfig, ...migratedConfig };
     } catch (err) {
       console.error("Error loading config:", err);
       return this.defaultConfig;
     }
+  }
+
+  /**
+   * Migrate old config format to new format
+   */
+  private migrateConfigIfNeeded(config: any): any {
+    // Check if this is an old config format (has apiKey instead of apiKeys)
+    if (config.apiKey && !config.apiKeys) {
+      console.log("Migrating config from old format to new format");
+      
+      const oldApiKey = config.apiKey;
+      const oldProvider = (config.apiProvider || ApiProvider.Gemini) as ApiProvider;
+      
+      // Create new apiKeys structure with all registered providers
+      const newApiKeys = this.createEmptyApiKeys();
+      
+      // Move the old API key to the appropriate provider
+      if (oldApiKey && oldApiKey.trim().length > 0) {
+        newApiKeys[oldProvider] = oldApiKey;
+      }
+      
+      // Create new config structure
+      const newConfig = {
+        ...config,
+        apiKeys: newApiKeys
+      };
+      
+      // Remove old apiKey field
+      delete newConfig.apiKey;
+      
+      // Save the migrated config
+      this.saveConfig(newConfig);
+      
+      return newConfig;
+    }
+    
+    return config;
   }
 
   public saveConfig(config: AppConfig): void {
@@ -187,10 +196,10 @@ export class ConfigHelper extends EventEmitter {
     try {
       const currentConfig = this.loadConfig();
       
-      // Auto-detect provider if API key is provided
-      if (updates.apiKey && !updates.apiProvider) {
-        updates.apiProvider = this.detectProviderFromKey(updates.apiKey);
-        console.log(`Auto-detected ${updates.apiProvider} API key format`);
+      // Handle API key updates for specific providers
+      if (updates.apiKeys) {
+        // Merge with existing API keys
+        updates.apiKeys = { ...currentConfig.apiKeys, ...updates.apiKeys };
       }
       
       // Reset models if provider is changing
@@ -227,9 +236,37 @@ export class ConfigHelper extends EventEmitter {
     }
   }
 
+  /**
+   * Get API key for a specific provider
+   */
+  public getApiKey(provider: ApiProvider): string {
+    const config = this.loadConfig();
+    return config.apiKeys[provider] || "";
+  }
+
+  /**
+   * Set API key for a specific provider
+   */
+  public setApiKey(provider: ApiProvider, apiKey: string): void {
+    const currentConfig = this.loadConfig();
+    const updatedApiKeys = { ...currentConfig.apiKeys, [provider]: apiKey };
+    this.updateConfig({ apiKeys: updatedApiKeys });
+  }
+
+  /**
+   * Check if API key exists for the current provider
+   */
   public hasApiKey(): boolean {
     const config = this.loadConfig();
-    return !!config.apiKey && config.apiKey.trim().length > 0;
+    return !!config.apiKeys[config.apiProvider] && config.apiKeys[config.apiProvider].trim().length > 0;
+  }
+
+  /**
+   * Check if API key exists for a specific provider
+   */
+  public hasApiKeyForProvider(provider: ApiProvider): boolean {
+    const config = this.loadConfig();
+    return !!config.apiKeys[provider] && config.apiKeys[provider].trim().length > 0;
   }
   
   public isValidApiKeyFormat(apiKey: string, provider?: ApiProvider): boolean {
@@ -328,6 +365,47 @@ export class ConfigHelper extends EventEmitter {
         error: error.message ? `Error: ${error.message}` : 'Unknown error validating Anthropic API key' 
       };
     }
+  }
+
+  /**
+   * Create empty API keys object for all registered providers
+   */
+  private createEmptyApiKeys(): Record<ApiProvider, string> {
+    const apiKeys: Record<string, string> = {};
+    Object.keys(this.providerRegistry).forEach(provider => {
+      apiKeys[provider] = "";
+    });
+    return apiKeys as Record<ApiProvider, string>;
+  }
+
+  /**
+   * Get all registered providers
+   */
+  public getRegisteredProviders(): ApiProvider[] {
+    return Object.keys(this.providerRegistry) as ApiProvider[];
+  }
+
+  /**
+   * Get provider configuration
+   */
+  public getProviderConfig(provider: ApiProvider): ModelConfig | undefined {
+    return this.providerRegistry[provider];
+  }
+
+  /**
+   * Get all provider configurations
+   */
+  public getAllProviderConfigs(): Record<ApiProvider, ModelConfig> {
+    return this.providerRegistry as Record<ApiProvider, ModelConfig>;
+  }
+
+  /**
+   * Register a new provider (for future extensibility)
+   */
+  public registerProvider(provider: ApiProvider, config: ModelConfig): void {
+    this.providerRegistry[provider] = config;
+    // Update default config to include new provider
+    this.defaultConfig.apiKeys[provider] = "";
   }
 }
 
