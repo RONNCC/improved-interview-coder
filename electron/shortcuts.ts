@@ -50,10 +50,10 @@ export class ShortcutsHelper {
           console.error("Error capturing screenshot:", error)
         }
       }
-    })
+   })
 
-    globalShortcut.register("CommandOrControl+Enter", () => {
-      console.log("Command/Ctrl + Enter pressed. Triggering solve/debug in renderer.");
+    globalShortcut.register("CommandOrControl+Shift+Enter", () => {
+      console.log("Command/Ctrl + Shift + Enter pressed. Triggering solve/debug in renderer.");
       const mainWindow = this.deps.getMainWindow();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("shortcut-process-screenshots");

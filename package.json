@@ -1,6 +1,6 @@
 {
-  "name": "interview-coder-v1",
-  "version": "1.0.19",
+  "name": "ninja-coder",
+  "version": "1.0.20",
   "main": "./dist-electron/main.js",
   "scripts": {
     "clean": "npx rimraf dist dist-electron",
@@ -15,8 +15,8 @@
     "package-win": "npm run build && electron-builder build --win"
   },
   "build": {
-    "appId": "com.chunginlee.interviewcoder",
-    "productName": "Interview Coder",
+    "appId": "com.ninjacoder.app",
+    "productName": "Ninja Coder",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
@@ -48,7 +48,7 @@
           ]
         }
       ],
-      "artifactName": "Interview-Coder-${arch}.${ext}",
+      "artifactName": "Ninja-Coder-${arch}.${ext}",
       "icon": "assets/icons/mac/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -57,9 +57,9 @@
       "identity": "Developer ID Application",
       "notarize": true,
       "protocols": {
-        "name": "interview-coder-protocol",
+        "name": "ninja-coder-protocol",
         "schemes": [
-          "interview-coder"
+          "ninja-coder"
         ]
       }
     },
@@ -70,9 +70,9 @@
       "icon": "assets/icons/win/icon.ico",
       "artifactName": "${productName}-Windows-${version}.${ext}",
       "protocols": {
-        "name": "interview-coder-protocol",
+        "name": "ninja-coder-protocol",
         "schemes": [
-          "interview-coder"
+          "ninja-coder"
         ]
       }
     },
@@ -83,9 +83,9 @@
       "icon": "assets/icons/png/icon-256x256.png",
       "artifactName": "${productName}-Linux-${version}.${ext}",
       "protocols": {
-        "name": "interview-coder-protocol",
+        "name": "ninja-coder-protocol",
         "schemes": [
-          "interview-coder"
+          "ninja-coder"
         ]
       }
     },
@@ -93,7 +93,7 @@
       {
         "provider": "github",
         "owner": "ibttf",
-        "repo": "interview-coder",
+        "repo": "ninja-coder",
         "private": false,
         "releaseType": "release"
       }
@@ -112,15 +112,16 @@
     }
   },
   "keywords": [
-    "interview",
-    "coding",
-    "interview prep",
-    "technical interview",
-    "tool"
+    "interview-prep",
+    "coding-challenges",
+    "problem-solving",
+    "ai-assistant",
+    "developer-tools",
+    "ninja-coder"
   ],
   "author": "Interview Coder Contributors",
   "license": "AGPL-3.0-or-later",
-  "description": "An invisible desktop application to help you pass your technical interviews.",
+  "description": "The All-in-One App for Acing Live Coding Interviews.",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@electron/notarize": "^2.3.0",
