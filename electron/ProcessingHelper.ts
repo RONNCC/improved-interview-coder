@@ -782,14 +782,23 @@ ${problemInfo.example_output || "No example output provided."}
 LANGUAGE: ${language}
 
 I need the response in the following format:
-1. Code: A clean, concise(within reason like dont use None everywhere or confusing binary operations), somewhat optimized implementation in ${language}.
-2. Your Thoughts: A list of key insights and reasoning behind your approach - Like what is the approach to solving here that I can say explain to the engineer asking me this question and how did we decide to optimize this.
-3. Time complexity: O(X) with a detailed explanation (at least 2 sentences). Try to breakdown the answer in math,  like if there's a recurrence relation.
-4. Space complexity: O(X) with a detailed explanation (at least 2 sentences).  Try to breakdown the answer in math, like if there's a recurrence relation.
+1. Code: A clean, simple, readable implementation (it's ok to use python built-in libraries if it makes sense like collections,itertools,heapq) in ${language}.
+2. Your Thoughts: List of key insights and reasoning behind the approach -- I need to explain simply to the engineer asking me this question.
+3. Time complexity: O(X) with a simple but thorough explanation (at least 2 sentences). Try to breakdown the answer in math,  like if there's a recurrence relation explain it so I can show my work.
+4. Space complexity: O(X) with a simple but thorough explanation (at least 2 sentences).  Try to breakdown the answer in math,  like if there's a recurrence relation explain it so I can show my work.
 
-For complexity explanations:
-- Time complexity should include a breakdown of any major top-level operations such as loops, recursion, sorting, or data structure operations. Explain how often each one runs and why they contribute to the overall time complexity. Avoid vague summaries—be precise about what drives the cost.
-- Space complexity should explain all additional memory used beyond the input, including any data structures, caches, recursion stacks, etc. If space is constant, state why it does not grow with input size. If it's linear or more, clarify which parts of the algorithm are responsible.
+<code_notes>
+I'm going into a coding interview (potentially an incremental problem). Give simple, short, and optimized code
+Be concise and err on simplicity in comments/docs since is a coding interview and i have limited time to read.
+Don't waste extra characters doing things like validating types if already provided via annotations.
+Try to front-load important validations and add defensive checks at the beginning if needed.
+If there's already existing code take that into account, such as for reuse.
+</code_notes>
+
+<complexity_notes>
+- For time complexity, break down the main operations (like loops, recursion, sorting, or data structure use). Say how many times each runs and why. Be specific about what affects the time cost.
+- For space complexity, explain any extra memory used besides the input (like data structures or recursion stack). If it's constant, say why. If it's more, mention what causes it.
+</complexity_notes>
 
 Your solution should be efficient, well-commented, and handle edge cases.`;
 
