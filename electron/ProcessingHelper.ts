@@ -7,6 +7,7 @@ import { configHelper } from "./ConfigHelper"
 import { ScreenshotHelper } from "./ScreenshotHelper"
 import { IAiProvider, ApiKeyError, Solution, DebugResult } from "./ai-providers/IAiProvider"
 import { IProcessingHelperDeps } from "./main"
+import { ApiProvider } from "../src/types/electron"
 
 // API Configuration
 export const API_CONFIG = {
@@ -16,13 +17,6 @@ export const API_CONFIG = {
     debugging: 8000
   }
 } as const;
-
-// Enum for API providers
-export enum ApiProvider {
-  OpenAI = "openai",
-  Gemini = "gemini",
-  Anthropic = "anthropic"
-}
 
 export class ProcessingHelper {
   private deps: IProcessingHelperDeps

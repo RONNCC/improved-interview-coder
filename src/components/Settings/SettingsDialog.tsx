@@ -12,14 +12,7 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Settings } from "lucide-react";
 import { useToast } from "../../contexts/toast";
-
-const PROVIDERS = {
-  OPENAI: "openai",
-  GEMINI: "gemini",
-  ANTHROPIC: "anthropic"
-} as const;
-
-type APIProvider = typeof PROVIDERS[keyof typeof PROVIDERS];
+import { ApiProvider } from "../../types/electron";
 
 type AIModel = {
   id: string;
@@ -197,11 +190,13 @@ interface SettingsDialogProps {
 export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDialogProps) {
   const [open, setOpen] = useState(externalOpen || false);
   const [apiKey, setApiKey] = useState("");
-  const [apiProvider, setApiProvider] = useState<APIProvider>(PROVIDERS.OPENAI);
+  const [apiProvider, setApiProvider] = useState<ApiProvider>(ApiProvider.OpenAI);
   const [extractionModel, setExtractionModel] = useState("gpt-4o");
   const [solutionModel, setSolutionModel] = useState("gpt-4o");
   const [debuggingModel, setDebuggingModel] = useState("gpt-4o");
   const [isLoading, setIsLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationMessage, setValidationMessage] = useState("");
   const { showToast } = useToast();
 
   // Sync with external open state
@@ -226,7 +221,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
       setIsLoading(true);
       interface Config {
         apiKey?: string;
-        apiProvider?: APIProvider;
+        apiProvider?: ApiProvider;
         extractionModel?: string;
         solutionModel?: string;
         debuggingModel?: string;
@@ -236,14 +231,14 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
         .getConfig()
         .then((config: Config) => {
           setApiKey(config.apiKey || "");
-          setApiProvider(config.apiProvider || PROVIDERS.OPENAI);
+          setApiProvider(config.apiProvider || ApiProvider.OpenAI);
           setExtractionModel(config.extractionModel || "gpt-4o");
           setSolutionModel(config.solutionModel || "gpt-4o");
           setDebuggingModel(config.debuggingModel || "gpt-4o");
         })
         .catch((error: unknown) => {
           console.error("Failed to load config:", error);
-          showToast("Error", "Failed to load settings", "error");
+          showToast("Error", "Failed to load current settings", "error");
         })
         .finally(() => {
           setIsLoading(false);
@@ -252,18 +247,18 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
   }, [open, showToast]);
 
   // Handle API provider change
-  const handleProviderChange = (provider: APIProvider) => {
+  const handleProviderChange = (provider: ApiProvider) => {
     setApiProvider(provider);
     // Reset models to correct defaults when changing provider
-    if (provider === PROVIDERS.OPENAI) {
+    if (provider === ApiProvider.OpenAI) {
       setExtractionModel("gpt-4o");
       setSolutionModel("gpt-4.1");
       setDebuggingModel("gpt-4.1");
-    } else if (provider === PROVIDERS.GEMINI) {
+    } else if (provider === ApiProvider.Gemini) {
       setExtractionModel("gemini-2.5-flash-preview-05-20");
       setSolutionModel("gemini-2.5-flash-preview-05-20");
       setDebuggingModel("gemini-2.5-flash-preview-05-20");
-    } else if (provider === PROVIDERS.ANTHROPIC) {
+    } else if (provider === ApiProvider.Anthropic) {
       setExtractionModel("claude-3-7-sonnet-20250219");
       setSolutionModel("claude-3-7-sonnet-20250219");
       setDebuggingModel("claude-3-7-sonnet-20250219");
@@ -344,16 +339,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             <div className="flex gap-2">
               <div
                 className={`flex-1 p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === PROVIDERS.OPENAI
+                  apiProvider === ApiProvider.OpenAI
                     ? "bg-white/10 border border-white/20"
                     : "bg-black/30 border border-white/5 hover:bg-white/5"
                 }`}
-                onClick={() => handleProviderChange(PROVIDERS.OPENAI)}
+                onClick={() => handleProviderChange(ApiProvider.OpenAI)}
               >
                 <div className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full ${
-                      apiProvider === PROVIDERS.OPENAI ? "bg-white" : "bg-white/20"
+                      apiProvider === ApiProvider.OpenAI ? "bg-white" : "bg-white/20"
                     }`}
                   />
                   <div className="flex flex-col">
@@ -364,16 +359,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </div>
               <div
                 className={`flex-1 p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === PROVIDERS.GEMINI
+                  apiProvider === ApiProvider.Gemini
                     ? "bg-white/10 border border-white/20"
                     : "bg-black/30 border border-white/5 hover:bg-white/5"
                 }`}
-                onClick={() => handleProviderChange(PROVIDERS.GEMINI)}
+                onClick={() => handleProviderChange(ApiProvider.Gemini)}
               >
                 <div className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full ${
-                      apiProvider === PROVIDERS.GEMINI ? "bg-white" : "bg-white/20"
+                      apiProvider === ApiProvider.Gemini ? "bg-white" : "bg-white/20"
                     }`}
                   />
                   <div className="flex flex-col">
@@ -384,16 +379,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </div>
               <div
                 className={`flex-1 p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === PROVIDERS.ANTHROPIC
+                  apiProvider === ApiProvider.Anthropic
                     ? "bg-white/10 border border-white/20"
                     : "bg-black/30 border border-white/5 hover:bg-white/5"
                 }`}
-                onClick={() => handleProviderChange(PROVIDERS.ANTHROPIC)}
+                onClick={() => handleProviderChange(ApiProvider.Anthropic)}
               >
                 <div className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full ${
-                      apiProvider === PROVIDERS.ANTHROPIC ? "bg-white" : "bg-white/20"
+                      apiProvider === ApiProvider.Anthropic ? "bg-white" : "bg-white/20"
                     }`}
                   />
                   <div className="flex flex-col">
@@ -407,8 +402,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
           
           <div className="space-y-2">
             <label className="text-sm font-medium text-white" htmlFor="apiKey">
-              {apiProvider === PROVIDERS.OPENAI ? "OpenAI API Key" : 
-               apiProvider === PROVIDERS.GEMINI ? "Gemini API Key" : 
+              {apiProvider === ApiProvider.OpenAI ? "OpenAI API Key" : 
+               apiProvider === ApiProvider.Gemini ? "Gemini API Key" : 
                "Anthropic API Key"}
             </label>
             <Input
@@ -417,8 +412,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={
-                apiProvider === PROVIDERS.OPENAI ? "sk-..." : 
-                apiProvider === PROVIDERS.GEMINI ? "Enter your Gemini API key" :
+                apiProvider === ApiProvider.OpenAI ? "sk-..." : 
+                apiProvider === ApiProvider.Gemini ? "Enter your Gemini API key" :
                 "sk-ant-..."
               }
               className="bg-black/50 border-white/10 text-white"
@@ -429,11 +424,11 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </p>
             )}
             <p className="text-xs text-white/50">
-              Your API key is stored locally and never sent to any server except {apiProvider === PROVIDERS.OPENAI ? "OpenAI" : "Google"}
+              Your API key is stored locally and never sent to any server except {apiProvider === ApiProvider.OpenAI ? "OpenAI" : "Google"}
             </p>
             <div className="mt-2 p-2 rounded-md bg-white/5 border border-white/10">
               <p className="text-xs text-white/80 mb-1">Don't have an API key?</p>
-              {apiProvider === PROVIDERS.OPENAI ? (
+              {apiProvider === ApiProvider.OpenAI ? (
                 <>
                   <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
                     onClick={() => openExternalLink('https://platform.openai.com/signup')} 
@@ -445,7 +440,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                   </p>
                   <p className="text-xs text-white/60">3. Create a new secret key and paste it here</p>
                 </>
-              ) : apiProvider === PROVIDERS.GEMINI ?  (
+              ) : apiProvider === ApiProvider.Gemini ?  (
                 <>
                   <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
                     onClick={() => openExternalLink('https://aistudio.google.com/')} 
@@ -525,8 +520,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             {modelCategories.map((category) => {
               // Get the appropriate model list based on selected provider
               const models = 
-                apiProvider === PROVIDERS.OPENAI ? category.openaiModels : 
-                apiProvider === PROVIDERS.GEMINI ? category.geminiModels :
+                apiProvider === ApiProvider.OpenAI ? category.openaiModels : 
+                apiProvider === ApiProvider.Gemini ? category.geminiModels :
                 category.anthropicModels;
               
               return (

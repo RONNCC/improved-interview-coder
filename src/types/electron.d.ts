@@ -1,3 +1,10 @@
+// Shared API Provider enum for both frontend and backend
+export enum ApiProvider {
+  OpenAI = "openai",
+  Gemini = "gemini",
+  Anthropic = "anthropic"
+}
+
 export interface ElectronAPI {
   // Original methods
   openSubscriptionPortal: (authData: {

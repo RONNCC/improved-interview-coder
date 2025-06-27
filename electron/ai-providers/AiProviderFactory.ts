@@ -1,5 +1,5 @@
 import { AppConfig } from "../ConfigHelper";
-import { ApiProvider } from "../ProcessingHelper";
+import { ApiProvider } from "../../src/types/electron";
 import { IAiProvider } from "./IAiProvider";
 import { OpenAiProvider } from "./OpenAiProvider";
 import { GeminiProvider } from "./GeminiProvider"; // Assumes GeminiProvider.ts exists
