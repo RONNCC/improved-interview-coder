@@ -5,7 +5,7 @@ import { app } from "electron"
 import { EventEmitter } from "events"
 import { OpenAI } from "openai"
 
-interface Config {
+export interface AppConfig {
   apiKey: string;
   apiProvider: "openai" | "gemini" | "anthropic";  // Added provider selection
   extractionModel: string;
@@ -17,7 +17,7 @@ interface Config {
 
 export class ConfigHelper extends EventEmitter {
   private configPath: string;
-  private defaultConfig: Config = {
+  private defaultConfig: AppConfig = {
     apiKey: "",
     apiProvider: "gemini", // Default to Gemini
     extractionModel: "gemini-2.0-flash", // Default to Flash for faster responses
@@ -100,7 +100,7 @@ export class ConfigHelper extends EventEmitter {
     return model;
   }
 
-  public loadConfig(): Config {
+  public loadConfig(): AppConfig {
     try {
       if (fs.existsSync(this.configPath)) {
         const configData = fs.readFileSync(this.configPath, 'utf8');
@@ -140,7 +140,7 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Save configuration to disk
    */
-  public saveConfig(config: Config): void {
+  public saveConfig(config: AppConfig): void {
     try {
       // Ensure the directory exists
       const configDir = path.dirname(this.configPath);
@@ -157,7 +157,7 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Update specific configuration values
    */
-  public updateConfig(updates: Partial<Config>): Config {
+  public updateConfig(updates: Partial<AppConfig>): AppConfig {
     try {
       const currentConfig = this.loadConfig();
       let provider = updates.apiProvider || currentConfig.apiProvider;

@@ -7,7 +7,8 @@ import { v4 as uuidv4 } from "uuid"
 import { execFile } from "child_process"
 import { promisify } from "util"
 import screenshot from "screenshot-desktop"
-import os from "os"
+import sharp from "sharp"
+import { configHelper } from "./ConfigHelper"
 
 const execFileAsync = promisify(execFile)
 
@@ -252,10 +253,6 @@ export class ScreenshotHelper {
         
         // Method 3: Last resort - create a tiny placeholder image
         console.log("All screenshot methods failed, creating placeholder image");
-        
-        // Create a 1x1 transparent PNG as fallback
-        const fallbackBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-        console.log("Created placeholder image as fallback");
         
         // Show the error but return a valid buffer so the app doesn't crash
         throw new Error("Could not capture screenshot with any method. Please check your Windows security settings and try again.");

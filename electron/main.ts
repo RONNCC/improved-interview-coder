@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, shell, ipcMain } from "electron"
+import { app, BrowserWindow, shell, Menu, globalShortcut, screen, BrowserWindowConstructorOptions } from "electron"
 import path from "path"
 import fs from "fs"
 import { initializeIpcHandlers } from "./ipcHandlers"
@@ -176,13 +176,15 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 } else {
-  app.on("second-instance", (event, commandLine) => {
-    // Someone tried to run a second instance, we should focus our window.
-    if (state.mainWindow) {
+  app.on("second-instance", (_event, _commandLine) => {
+    console.log("second-instance event received:", _commandLine)
+    
+    // Focus or create the main window
+    if (!state.mainWindow) {
+      createWindow()
+    } else {
       if (state.mainWindow.isMinimized()) state.mainWindow.restore()
       state.mainWindow.focus()
-
-      // Protocol handler removed - no longer using auth callbacks
     }
   })
 }
@@ -204,7 +206,7 @@ async function createWindow(): Promise<void> {
   state.step = 60
   state.currentY = 50
 
-  const windowSettings: Electron.BrowserWindowConstructorOptions = {
+  const windowSettings: BrowserWindowConstructorOptions = {
     width: 800,
     height: 600,
     minWidth: 750,

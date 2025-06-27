@@ -1,19 +1,15 @@
 // ProcessingHelper.ts
 import fs from "node:fs"
-import path from "node:path"
-import { ScreenshotHelper } from "./ScreenshotHelper"
-import { IProcessingHelperDeps } from "./main"
-import * as axios from "axios"
-import { app, BrowserWindow, dialog } from "electron"
-import { OpenAI } from "openai"
+import { BrowserWindow } from "electron"
+import axios from "axios"
+import { createAiProvider } from "./ai-providers/AiProviderFactory"
 import { configHelper } from "./ConfigHelper"
-import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenAI } from "@google/genai";
-import { zodResponseFormat } from "openai/helpers/zod";
-import { z } from "zod";
+import { ScreenshotHelper } from "./ScreenshotHelper"
+import { IAiProvider, ApiKeyError, Solution, DebugResult } from "./ai-providers/IAiProvider"
+import { IProcessingHelperDeps } from "./main"
 
 // API Configuration
-const API_CONFIG = {
+export const API_CONFIG = {
   maxTokens: {
     extraction: 6000,
     solution: 6000,
@@ -31,9 +27,7 @@ export enum ApiProvider {
 export class ProcessingHelper {
   private deps: IProcessingHelperDeps
   private screenshotHelper: ScreenshotHelper
-  private openaiClient: OpenAI | null = null
-  private geminiClient: GoogleGenAI | null = null
-  private anthropicClient: Anthropic | null = null
+  private aiProvider: IAiProvider | null = null;
 
   // AbortControllers for API requests
   private currentProcessingAbortController: AbortController | null = null
@@ -43,66 +37,45 @@ export class ProcessingHelper {
     this.deps = deps
     this.screenshotHelper = deps.getScreenshotHelper()
     
-    // Initialize AI client based on config
-    this.initializeAIClient();
+    this._initializeAiProvider();
     
-    // Listen for config changes to re-initialize the AI client
     configHelper.on('config-updated', () => {
-      this.initializeAIClient();
+      this._initializeAiProvider();
     });
   }
   
-  /**
-   * Initialize or reinitialize the AI client with current config
-   */
-  private initializeAIClient(): void {
-    // 1. Reset all clients to a clean state first.
-    this.openaiClient = null;
-    this.geminiClient = null;
-    this.anthropicClient = null;
-
-    try {
-      const config = configHelper.loadConfig();
-
-      // 2. Use a "Guard Clause" to handle the missing API key case for all providers at once.
-      if (!config.apiKey) {
-        console.warn(`API key is missing. AI client for provider "${config.apiProvider}" will not be initialized.`);
-        return; // Exit early
-      }
-
-      // 3. Use a switch statement for cleaner, more readable logic.
-      switch (config.apiProvider) {
-        case ApiProvider.OpenAI:
-          this.openaiClient = new OpenAI({ 
-            apiKey: config.apiKey,
-            timeout: 60000,
-            maxRetries: 2
-          });
-          console.log("OpenAI client initialized successfully");
-          break;
-
-        case ApiProvider.Gemini:
-          this.geminiClient = new GoogleGenAI({ apiKey: config.apiKey });
-          console.log("Gemini client initialized successfully");
-          break;
-
-        case ApiProvider.Anthropic:
-          this.anthropicClient = new Anthropic({
-            apiKey: config.apiKey,
-            timeout: 60000,
-            maxRetries: 2
-          });
-          console.log("Anthropic client initialized successfully");
-          break;
-        
-        default:
-          // Handle cases where the provider is unknown or unsupported
-          console.warn(`Unknown or unsupported API provider: "${config.apiProvider}"`);
-      }
-    } catch (error) {
-      // The clients are already null from the top, so no need to reset them again.
-      console.error("Failed to initialize AI client:", error);
+  private _initializeAiProvider(): void {
+    const config = configHelper.loadConfig();
+    this.aiProvider = createAiProvider(config);
+    if (this.aiProvider) {
+        console.log(`${config.apiProvider} provider initialized successfully.`);
     }
+  }
+
+  /**
+   * Ensures that the currently configured AI provider is initialized and valid.
+   * If not initialized, it attempts to reinitialize it.
+   * Sends an API_KEY_INVALID event to the main window if initialization fails.
+   * @returns {boolean} True if the AI provider is successfully initialized and valid, false otherwise.
+   */
+  private _ensureAiProviderIsValid(): boolean {
+    const mainWindow = this.deps.getMainWindow();
+    if (!mainWindow) {
+      console.error("Main window not available for AI provider validation.");
+      return false;
+    }
+
+    if (!this.aiProvider) {
+      this._initializeAiProvider();
+    }
+
+    if (!this.aiProvider) {
+      const config = configHelper.loadConfig();
+      console.error(`${config.apiProvider} provider not initialized or API key invalid.`);
+      mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.API_KEY_INVALID);
+      return false;
+    }
+    return true;
   }
 
   private async waitForInitialization(
@@ -157,40 +130,9 @@ export class ProcessingHelper {
     const mainWindow = this.deps.getMainWindow()
     if (!mainWindow) return
 
-    const config = configHelper.loadConfig();
-    
-    // First verify we have a valid AI client
-    if (config.apiProvider === ApiProvider.OpenAI && !this.openaiClient) {
-      this.initializeAIClient();
-      
-      if (!this.openaiClient) {
-        console.error("OpenAI client not initialized");
-        mainWindow.webContents.send(
-          this.deps.PROCESSING_EVENTS.API_KEY_INVALID
-        );
-        return;
-      }
-    } else if (config.apiProvider === ApiProvider.Gemini && !this.geminiClient) {
-      this.initializeAIClient();
-      
-      if (!this.geminiClient) {
-        console.error("Gemini API key not initialized");
-        mainWindow.webContents.send(
-          this.deps.PROCESSING_EVENTS.API_KEY_INVALID
-        );
-        return;
-      }
-    } else if (config.apiProvider === ApiProvider.Anthropic && !this.anthropicClient) {
-      // Add check for Anthropic client
-      this.initializeAIClient();
-      
-      if (!this.anthropicClient) {
-        console.error("Anthropic client not initialized");
-        mainWindow.webContents.send(
-          this.deps.PROCESSING_EVENTS.API_KEY_INVALID
-        );
-        return;
-      }
+    // Ensure the AI provider is initialized and valid before proceeding
+    if (!this._ensureAiProviderIsValid()) {
+      return; // Exit if client is not valid (error message already sent)
     }
 
     const view = this.deps.getView()
@@ -246,8 +188,8 @@ export class ProcessingHelper {
         const result = await this.processScreenshotsHelper(validScreenshots, signal, additionalText)
 
         if (!result.success) {
-          console.log("Processing failed:", result.error)
-          if (result.error?.includes("API Key") || result.error?.includes("OpenAI") || result.error?.includes("Gemini")) {
+          console.error("Processing failed:", result.error)
+          if (result.isApiKeyError) {
             mainWindow.webContents.send(
               this.deps.PROCESSING_EVENTS.API_KEY_INVALID
             )
@@ -271,21 +213,15 @@ export class ProcessingHelper {
         )
         this.deps.setView("solutions")
       } catch (error: any) {
-        mainWindow.webContents.send(
-          this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
-          error
-        )
-        console.error("Processing error:", error)
-        if (axios.isCancel(error)) {
-          mainWindow.webContents.send(
-            this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
-            "Processing was canceled by the user."
-          )
+        // Check for user-initiated aborts from any SDK
+        if (axios.isCancel(error) || error?.name === 'APIUserAbortError') {
+          console.log("Initial processing was canceled by the user.");
         } else {
           mainWindow.webContents.send(
             this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
-            error.message || "Server error. Please try again."
+            error.message || "An unexpected error occurred during processing."
           )
+          console.error("Processing error:", error)
         }
         // Reset view back to queue on error
         console.log("Resetting view to queue due to error")
@@ -373,21 +309,25 @@ export class ProcessingHelper {
             result.data
           )
         } else {
-          mainWindow.webContents.send(
-            this.deps.PROCESSING_EVENTS.DEBUG_ERROR,
-            result.error
-          )
+          if (result.isApiKeyError) {
+            mainWindow.webContents.send(
+              this.deps.PROCESSING_EVENTS.API_KEY_INVALID
+            )
+          } else {
+            mainWindow.webContents.send(
+              this.deps.PROCESSING_EVENTS.DEBUG_ERROR,
+              result.error
+            )
+          }
         }
       } catch (error: any) {
-        if (axios.isCancel(error)) {
-          mainWindow.webContents.send(
-            this.deps.PROCESSING_EVENTS.DEBUG_ERROR,
-            "Extra processing was canceled by the user."
-          )
+        // Check for user-initiated aborts from any SDK
+        if (axios.isCancel(error) || error?.name === 'APIUserAbortError') {
+          console.log("Debug processing was canceled by the user.");
         } else {
           mainWindow.webContents.send(
             this.deps.PROCESSING_EVENTS.DEBUG_ERROR,
-            error.message
+            error.message || "An unexpected error occurred during debugging."
           )
         }
       } finally {
@@ -398,263 +338,26 @@ export class ProcessingHelper {
 
   private async processScreenshotsHelper(
     screenshots: Array<{ path: string; data: string }>,
-    signal: AbortSignal,
+    signal?: AbortSignal,
     additionalText?: string
-  ) {
+  ): Promise<{ success: boolean; data?: Solution; error?: string; isApiKeyError?: boolean }> {
     try {
-      const config = configHelper.loadConfig();
       const language = await this.getLanguage();
       const mainWindow = this.deps.getMainWindow();
 
-      // --- PROMPT STRINGS EXTRACTED TO TOP, USING language VAR ---
-      const openAIPromptSystem =
-        "You are a coding challenge interpreter. Analyze the screenshot of the coding problem and extract all relevant information including examples and any classes already given. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text. Also try to roughly return if there is any initial starting code. ";
-      const openAIPromptUser =
-        `Extract the coding problem details from these screenshots verbosely. Return in JSON format. Preferred coding language we gonna use for this problem is ${language}.`;
+      if (!this.aiProvider) {
+        return { success: false, error: "AI Provider not initialized." };
+      }
 
-      const geminiPrompt =
-        `You are a coding challenge interpreter. Analyze the screenshots of the coding problem and extract all relevant information including examples and any classes already given. Return the information in JSON format with these fields: problem_statement (ideally verbatim of the objective/input/problem statement), constraints (including any classes already given), example_inputs, example_outputs. Just return the structured JSON without any other text. Preferred coding language we gonna use for this problem is ${language}.`;
-
-      const anthropicPrompt =
-        `Extract the coding problem details from these screenshots. Return in JSON format with these fields: problem_statement, constraints, example_input, example_output. Preferred coding language is ${language}.`;
-      // ---------------------------------------
-
-      // Step 1: Extract problem info using AI Vision API (OpenAI or Gemini)
-      const imageDataList = screenshots.map(screenshot => screenshot.data);
-
-      // Update the user on progress
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
           message: "Analyzing problem from screenshots...",
           progress: 20
         });
       }
+      const imageDataList = screenshots.map(s => ({ data: s.data }));
+      const problemInfo = await this.aiProvider.extractProblemInfo(imageDataList, language, signal);
 
-      let problemInfo;
-
-      if (config.apiProvider === ApiProvider.OpenAI) {
-        // Verify OpenAI client
-        if (!this.openaiClient) {
-          this.initializeAIClient(); // Try to reinitialize
-
-          if (!this.openaiClient) {
-            return {
-              success: false,
-              error: "OpenAI API key not configured or invalid. Please check your settings."
-            };
-          }
-        }
-
-        // Use OpenAI for processing
-        const messages = [
-          {
-            role: "system" as const,
-            content: openAIPromptSystem
-          },
-          {
-            role: "user" as const,
-            content: [
-              {
-                type: "text" as const,
-                text: openAIPromptUser
-              },
-              ...imageDataList.map(data => ({
-                type: "image_url" as const,
-                image_url: { url: `data:image/png;base64,${data}` }
-              }))
-            ]
-          }
-        ];
-
-        // Define the expected structure for the coding problem extraction
-        const ProblemExtraction = z.object({
-          problem_statement: z.string(),
-          constraints: z.string().optional(),
-          example_input: z.string().optional(),
-          example_output: z.string().optional(),
-        });
-
-        // Use OpenAI's beta structured output with zodResponseFormat
-        // (Assumes openai.beta.chat.completions.parse and zodResponseFormat are available in your OpenAI SDK)
-        let extractionResponse;
-        try {
-          extractionResponse = await this.openaiClient.beta.chat.completions.parse({
-            model: config.extractionModel || "gpt-4o",
-            messages: messages,
-            response_format: zodResponseFormat(
-              ProblemExtraction,
-              "problem_extraction"
-            ),
-            max_completion_tokens: API_CONFIG.maxTokens.extraction,
-          });
-        } catch (error) {
-          console.error("Error during OpenAI structured extraction:", error);
-          return {
-            success: false,
-            error: "Failed to extract problem information in structured format. Please try again or use clearer screenshots."
-          };
-        }
-
-        console.log("Extraction response from LLM:", extractionResponse);
-
-        // extractionResponse will be the parsed object if successful
-        try {
-          problemInfo = extractionResponse.choices[0].message.parsed;
-        } catch (error) {
-          console.error("Error parsing OpenAI structured response:", error);
-          return {
-            success: false,
-            error: "Failed to parse problem information. Please try again or use clearer screenshots."
-          };
-        }
-      } else if (config.apiProvider === ApiProvider.Gemini)  {
-
-          // Use Gemini API with GoogleGenAI SDK
-          if (!this.geminiClient) {
-            return {
-              success: false,
-              error: "Gemini API client not initialized. Please check your settings."
-            };
-          }
-
-          try {
-            // Prepare the content parts: text prompt + images as inlineData
-            const contentParts = [
-              {
-                text: geminiPrompt // Assuming geminiPrompt is defined elsewhere
-              },
-              ...imageDataList.map(data => ({ // Assuming imageDataList is an array of base64 strings
-                inlineData: {
-                  mimeType: "image/png", // Ensure this matches the actual image type
-                  data: data
-                }
-              }))
-            ];
-        
-            const genAIResult = await this.geminiClient.models.generateContent({
-              model: config.extractionModel || "gemini-2.0-flash", // Updated model name
-              contents: contentParts, // Simplified - no need for role/parts wrapper
-              config: {
-                temperature: 0.2,
-                responseMimeType: "application/json", // Crucial for JSON mode
-                maxOutputTokens: API_CONFIG.maxTokens.extraction,
-                responseSchema: { // Defines the expected JSON structure
-                  type: "object",
-                  properties: {
-                    problem_statement: { type: "string", description: "The full problem description." },
-                    constraints: { type: "string", description: "Constraints for the problem." },
-                    example_input: { type: "string", description: "An example input." },
-                    example_output: { type: "string", description: "The corresponding example output." }
-                  },
-                  required: ["problem_statement"]
-                }
-              }
-            });
-          
-            // Use the simplified response.text accessor from the new SDK
-            const jsonString = genAIResult.text;
-          
-            if (!jsonString || jsonString.trim() === "") {
-              console.error("Empty text response from Gemini API despite requesting JSON.");
-              throw new Error("Empty or invalid JSON string response from Gemini API.");
-            }
-          
-            // Parse the JSON string to get the JavaScript object
-            try {
-              // Remove potential markdown backticks if the LLM adds them
-              const cleanedJsonString = jsonString.replace(/^``````$/g, '').trim();
-              problemInfo = JSON.parse(cleanedJsonString);
-            } catch (parseError) {
-              console.error("Failed to parse JSON response from Gemini API:", parseError);
-              console.error("Original string from API:", jsonString);
-              throw new Error(`Invalid JSON format received from Gemini API: ${parseError.message}`);
-            }
-          
-          } catch (error) {
-            console.error("Error using Gemini API for extraction:", error);
-            let errorMessage = "Failed to process with Gemini API. Please check your API key or try again later.";
-            if (error.message) {
-              errorMessage = error.message;
-              if (error.message.includes("API key not valid") || error.message.includes("PERMISSION_DENIED")) {
-                  errorMessage = "Gemini API key is invalid or lacks permissions. Please check your configuration.";
-              } else if (error.message.includes("quota")) {
-                  errorMessage = "Gemini API quota exceeded. Please check your usage limits.";
-              }
-            }
-            return {
-              success: false,
-              error: errorMessage
-            };
-          }
-                    
-      } else if (config.apiProvider === ApiProvider.Anthropic) {
-        if (!this.anthropicClient) {
-          return {
-            success: false,
-            error: "Anthropic API key not configured. Please check your settings."
-          };
-        }
-
-        try {
-          const messages = [
-            {
-              role: "user" as const,
-              content: [
-                {
-                  type: "text" as const,
-                  text: anthropicPrompt
-                },
-                ...imageDataList.map(data => ({
-                  type: "image" as const,
-                  source: {
-                    type: "base64" as const,
-                    media_type: "image/png" as const,
-                    data: data
-                  }
-                }))
-              ]
-            }
-          ];
-
-          const response = await this.anthropicClient.messages.create({
-            model: config.extractionModel || "claude-3-7-sonnet-20250219",
-            max_tokens: API_CONFIG.maxTokens.extraction,
-            messages: messages,
-            temperature: 0.2
-          });
-
-          const responseText = (response.content[0] as { type: 'text', text: string }).text;
-          const jsonText = responseText.replace(/```json|```/g, '').trim();
-          problemInfo = JSON.parse(jsonText);
-        } catch (error: any) {
-          console.error("Error using Anthropic API:", error);
-
-          // Handle specific Anthropic/Claude error cases
-          if (error?.status === 429) {
-            return {
-              success: false,
-              error: "Claude API rate limit exceeded. Please wait a few minutes before trying again."
-            };
-          }
-          if (
-            error?.status === 413 ||
-            (typeof error?.message === "string" && error.message.toLowerCase().includes("token"))
-          ) {
-            return {
-              success: false,
-              error: "Your screenshots contain too much information for Claude to process. Switch to OpenAI or Gemini in settings which can handle larger inputs."
-            };
-          }
-
-          return {
-            success: false,
-            error: "Failed to process with Anthropic API. Please check your API key or try again later."
-          };
-          
-        }
-      }
-      
-      // Update the user on progress
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
           message: "Problem analyzed successfully. Preparing to generate solution...",
@@ -662,88 +365,59 @@ export class ProcessingHelper {
         });
       }
 
-      // Store problem info in AppState
       this.deps.setProblemInfo(problemInfo);
 
-      // Send first success event
       if (mainWindow) {
         mainWindow.webContents.send(
           this.deps.PROCESSING_EVENTS.PROBLEM_EXTRACTED,
           problemInfo
         );
 
-        // Generate solutions after successful extraction
-        const solutionsResult = await this.generateSolutionsHelper(signal, additionalText);
+        const solutionsResult = await this.generateSolutionsHelper(signal, additionalText)
         if (solutionsResult.success) {
-          // Clear any existing extra screenshots before transitioning to solutions view
-          this.screenshotHelper.clearExtraScreenshotQueue();
-          
-          // Final progress update
+          this.screenshotHelper.clearExtraScreenshotQueue()
           mainWindow.webContents.send("processing-status", {
             message: "Solution generated successfully",
             progress: 100
-          });
-          
-          mainWindow.webContents.send(
-            this.deps.PROCESSING_EVENTS.SOLUTION_SUCCESS,
-            solutionsResult.data
-          );
+          })
           return {
             success: true,
             data: solutionsResult.data
-          };
+          }
         } else {
-          throw new Error(
-            solutionsResult.error || "Failed to generate solutions"
-          );
+          // Propagate error information from the helper
+          return { success: false, ...solutionsResult }
         }
       }
 
-      return {
-        success: false,
-        error: "Failed to process screenshots"
-      };
-    } catch (error: any) {
-      // If the request was cancelled, don't retry
+      return { success: false, error: "Main window not available" };
+    } catch (error: unknown) {
       if (axios.isCancel(error)) {
-        return {
-          success: false,
-          error: "Processing was canceled by the user."
-        };
-      }
-      
-      // Handle OpenAI API errors specifically
-      if (error?.response?.status === 401) {
-        return {
-          success: false,
-          error: "Invalid OpenAI API key. Please check your settings."
-        };
-      } else if (error?.response?.status === 429) {
-        return {
-          success: false,
-          error: "OpenAI API rate limit exceeded or insufficient credits. Please try again later."
-        };
-      } else if (error?.response?.status === 500) {
-        return {
-          success: false,
-          error: "OpenAI server error. Please try again later."
-        };
+        return { success: false, error: "Processing was canceled by the user." };
       }
 
-      console.error("API Error Details:", error);
+      console.error("Error in processScreenshotsHelper:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to process screenshots. Please try again.";
       return {
         success: false,
-        error: error.message || "Failed to process screenshots. Please try again."
+        error: errorMessage,
+        isApiKeyError: error instanceof ApiKeyError,
       };
     }
   }
 
-  private async generateSolutionsHelper(signal: AbortSignal, additionalText?: string) {
+  private async generateSolutionsHelper(
+    signal?: AbortSignal,
+    additionalText?: string
+  ): Promise<{ success: boolean; data?: Solution; error?: string; isApiKeyError?: boolean }> {
     try {
       const problemInfo = this.deps.getProblemInfo();
       const language = await this.getLanguage();
-      const config = configHelper.loadConfig();
       const mainWindow = this.deps.getMainWindow();
+
+      if (!this.aiProvider) {
+        return { success: false, error: "AI Provider not initialized." };
+      }
 
       if (!problemInfo || !problemInfo.problem_statement) {
         console.error("No problem statement available for solution generation.", problemInfo);
@@ -755,537 +429,81 @@ export class ProcessingHelper {
 
       console.log("Problem info before solution generation:", problemInfo);
 
-      // Update progress status
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
           message: "Creating optimal solution with detailed explanations...",
           progress: 60
         });
       }
-
-      // Create prompt for solution generation
-      var promptText = `
-Generate a detailed solution for the following coding problem:
-
-PROBLEM STATEMENT:
-${problemInfo.problem_statement}
-
-CONSTRAINTS:
-${problemInfo.constraints || "No specific constraints provided."}
-
-EXAMPLE INPUT:
-${problemInfo.example_input || "No example input provided."}
-
-EXAMPLE OUTPUT:
-${problemInfo.example_output || "No example output provided."}
-
-LANGUAGE: ${language}
-
-I need the response in the following format:
-1. Code: A clean, simple, readable implementation (it's ok to use python built-in libraries if it makes sense like collections,itertools,heapq) in ${language}.
-2. Your Thoughts: List of key insights and reasoning behind the approach -- I need to explain simply to the engineer asking me this question.
-3. Time complexity: O(X) with a simple but thorough explanation (at least 2 sentences). Try to breakdown the answer in math,  like if there's a recurrence relation explain it so I can show my work.
-4. Space complexity: O(X) with a simple but thorough explanation (at least 2 sentences).  Try to breakdown the answer in math,  like if there's a recurrence relation explain it so I can show my work.
-
-<code_notes>
-I'm going into a coding interview (potentially an incremental problem). Give simple, short, and optimized code
-Be concise and err on simplicity in comments/docs since is a coding interview and i have limited time to read.
-Don't waste extra characters doing things like validating types if already provided via annotations.
-Try to front-load important validations and add defensive checks at the beginning if needed.
-If there's already existing code take that into account, such as for reuse.
-</code_notes>
-
-<complexity_notes>
-- For time complexity, break down the main operations (like loops, recursion, sorting, or data structure use). Say how many times each runs and why. Be specific about what affects the time cost.
-- For space complexity, explain any extra memory used besides the input (like data structures or recursion stack). If it's constant, say why. If it's more, mention what causes it.
-</complexity_notes>
-
-Your solution should be efficient, well-commented, and handle edge cases.`;
-
-      // Add additional context if provided
-      if (additionalText?.trim()) {
-        promptText += `\n\nADDITIONAL CONTEXT:\n${additionalText.trim()}\n\nPlease use this context in your solution.`;
-      }
-      let responseContent;
-
-      console.log("Solution Prompt text:", promptText);
       
+      const solution = await this.aiProvider.generateSolution(
+        problemInfo,
+        language,
+        signal,
+        additionalText
+      );
 
-      if (config.apiProvider === ApiProvider.OpenAI) {
-        // OpenAI processing
-        if (!this.openaiClient) {
-          return {
-            success: false,
-            error: "OpenAI API key not configured. Please check your settings."
-          };
-        }
-        
-        // Send to OpenAI API
-        const solutionResponse = await this.openaiClient.chat.completions.create({
-          model: config.solutionModel || "gpt-4o",
-          messages: [
-            { role: "system", content: "You are an expert coding interview assistant. Provide clear, optimal solutions with detailed explanations." },
-            { role: "user", content: promptText }
-          ],
-          max_completion_tokens: API_CONFIG.maxTokens.solution,
-        });
-
-        responseContent = solutionResponse.choices[0].message.content;
-      } else if (config.apiProvider === ApiProvider.Gemini)  {
-        // Gemini processing using GoogleGenAI SDK (with config object)
-        if (!this.geminiClient) {
-          return {
-            success: false,
-            error: "Gemini API key not configured. Please check your settings."
-          };
-        }
-
-        try {
-          const response = await this.geminiClient.models.generateContent({
-            model: config.solutionModel || "gemini-2.0-flash",
-            contents: `You are an expert coding interview assistant. Provide a clear, optimal, concise solution with detailed explanations for this problem:\n\n${promptText}`,
-            config: {
-              maxOutputTokens: API_CONFIG.maxTokens.solution,
-              temperature: 0.2,
-              candidateCount: 1,
-              thinkingConfig: {
-                thinkingBudget: 500
-              }
-            }
-          });
-          console.log("Using Gemini model:", config.solutionModel, "with response:", response);
-          // Check for Gemini API errors: token limit or empty response
-          if (response?.candidates?.[0]?.finishReason === "MAX_TOKENS") {
-            console.error("Gemini API response stopped due to MAX_TOKENS:", response);
-            throw new Error("Gemini API response stopped due to reaching the maximum token limit. Try using fewer or smaller screenshots, or a shorter prompt.");
-          }
-          if (!response?.text?.trim()) {
-            throw new Error("Empty response from Gemini API");
-          }
-
-          responseContent = response.text;
-        } catch (error) {
-          console.error("Error using Gemini API for solution:", error);
-          return {
-            success: false,
-            error: "Failed to generate solution with Gemini API. Please check your API key or try again later."
-          };
-        }
-
-        
-      } else if (config.apiProvider === ApiProvider.Anthropic) {
-        // Anthropic processing
-        if (!this.anthropicClient) {
-          return {
-            success: false,
-            error: "Anthropic API key not configured. Please check your settings."
-          };
-        }
-        
-        try {
-          const messages = [
-            {
-              role: "user" as const,
-              content: [
-                {
-                  type: "text" as const,
-                  text: `You are an expert coding interview assistant. Provide a clear, optimal solution with detailed explanations for this problem:\n\n${promptText}`
-                }
-              ]
-            }
-          ];
-
-          // Send to Anthropic API
-          const response = await this.anthropicClient.messages.create({
-            model: config.solutionModel || "claude-3-7-sonnet-20250219",
-            max_tokens: API_CONFIG.maxTokens.solution,
-            messages: messages,
-            temperature: 0.2
-          });
-
-          responseContent = (response.content[0] as { type: 'text', text: string }).text;
-        } catch (error: any) {
-          console.error("Error using Anthropic API for solution:", error);
-
-          // Add specific handling for Claude's limitations
-          if (error.status === 429) {
-            return {
-              success: false,
-              error: "Claude API rate limit exceeded. Please wait a few minutes before trying again."
-            };
-          } else if (error.status === 413 || (error.message && error.message.includes("token"))) {
-            return {
-              success: false,
-              error: "Your screenshots contain too much information for Claude to process. Switch to OpenAI or Gemini in settings which can handle larger inputs."
-            };
-          }
-
-          return {
-            success: false,
-            error: "Failed to generate solution with Anthropic API. Please check your API key or try again later."
-          };
-        }
-      }
-      
-      // Extract parts from the response
-      const codeMatch = responseContent.match(/```(?:\w+)?\s*([\s\S]*?)```/);
-      const code = codeMatch ? codeMatch[1].trim() : responseContent;
-      
-      // Extract thoughts, looking for bullet points or numbered lists
-      const thoughtsRegex = /(?:[0-9]+\.\s*)?(?:Your\s+)?(?:Thoughts|Key Insights|Reasoning|Approach|Your Thoughts)\b(?::)?([\s\S]*?)(?:Time complexity:|---|$)/i;
-      
-      const thoughtsMatch = responseContent.match(thoughtsRegex);
-      let thoughts: string[] = [];
-      
-      if (thoughtsMatch && thoughtsMatch[1]) {
-        const thoughtsBlock = thoughtsMatch[1].trim(); // Get the captured block and trim whitespace
-
-        // Regex to extract individual bullet points or numbered items from the thoughtsBlock
-        // - `^`: Start of a line (due to `m` flag)
-        // - `\s*`: Optional leading whitespace
-        // - `(?:[-*•]|\d+\.)`: Matches a bullet point marker (-, *, •) or a number followed by a dot
-        // - `\s+`: One or more whitespace characters (to ensure there's a space after the marker)
-        // - `(.*)`: Captures the rest of the line (the actual thought)
-        // - `gm`: Global (find all matches) and Multiline (so ^ matches start of each line)
-        const bulletPointRegex = /^\s*(?:[-*•]|\d+\.)\s+(.*)/gm; 
-        
-        let match;
-        const extractedPoints = [];
-        while ((match = bulletPointRegex.exec(thoughtsBlock)) !== null) {
-          // match[1] contains the captured group (the text of the bullet point)
-          extractedPoints.push(match[1].trim());
-        }
-
-        if (extractedPoints.length > 0) {
-          thoughts = extractedPoints;
-        } else if (thoughtsBlock) { 
-          // If no bullet points were found but the thoughtsBlock has content,
-          // split by newlines as a fallback.
-          thoughts = thoughtsBlock.split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean); // Remove any empty strings resulting from blank lines
-        }
-      }
-      console.log("Thoughts:", thoughts);
-
-  
-      // These patterns account for optional markdown headers (e.g., "###"), optional numbering (e.g., "3."), 
-      // optional markdown bolding (e.g., "**Time Complexity**"),
-      // and ensure that captured content preserves internal newlines.
-
-      // Matches "Time Complexity:" (case-insensitive), possibly prefixed by markdown header, numbered, and/or bolded.
-      // Captures everything until "Space Complexity:" (similarly formatted) or end of string.
-      const timeComplexityPattern = /(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Time\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?|$)/i;
-      
-      // Matches "Space Complexity:" (case-insensitive), possibly prefixed by markdown header, numbered, and/or bolded.
-      // Captures everything until the next distinct section header line or end of string.
-      // A "distinct section header line" is one that primarily consists of a title-like text (e.g., "5. Conclusion", "**Notes:**"),
-      // optionally prefixed by markdown header, numbered/bolded, and is followed by a newline or end of string.
-      const spaceComplexityPattern = /(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:(?:^|\n)[ \t]*(?:#+\s*)?(?:(?:\d+\.\s*)?(?:\*\*)?[A-Z][A-Za-z0-9\s,'()\-]{1,80}(?:\*\*)?:?)\s*(?:\n|$))|$)/i;
-
-      let timeComplexity = "Time-Error.";
-      let spaceComplexity = "Space-Error."; // Corrected default to match the pattern of Time-Error.
-      
-      console.log("Response Content for complexity parsing:", responseContent);
-
-      const timeMatch = responseContent.match(timeComplexityPattern);
-      if (timeMatch && timeMatch[1]) {
-        timeComplexity = timeMatch[1].replace(/\r\n/g, '\n').trim();
-        if (timeComplexity === "") { // Handle explicitly empty content
-            timeComplexity = "O(n) - Explanation needed";
-        } else if (!timeComplexity.match(/O\([^)]+\)/i)) { // If no O(...) notation
-          timeComplexity = `O(n) - ${timeComplexity}`;
-        } else if (!timeComplexity.includes('-') && !timeComplexity.match(/because|driven by|due to|as|for example|where|which is|since|meaning/i)) {
-          // If O(...) is present but no dash or common explanation keyword, add a dash
-          const notationMatch = timeComplexity.match(/O\([^)]+\)/i);
-          if (notationMatch) {
-            const notation = notationMatch[0];
-            const rest = timeComplexity.substring(notation.length).trim();
-            if (rest && !rest.startsWith('-')) {
-                 timeComplexity = `${notation} - ${rest}`;
-            } else if (!rest) { // Only notation was present
-                 timeComplexity = `${notation} - Explanation needed`;
-            }
-          }
-        }
-      } else {
-        console.warn("Could not parse Time Complexity from response.");
-      }
-
-      const spaceMatch = responseContent.match(spaceComplexityPattern);
-      if (spaceMatch && spaceMatch[1]) {
-        spaceComplexity = spaceMatch[1].replace(/\r\n/g, '\n').trim();
-        if (spaceComplexity === "") { // Handle explicitly empty content
-            spaceComplexity = "O(n) - Explanation needed";
-        } else if (!spaceComplexity.match(/O\([^)]+\)/i)) { // If no O(...) notation
-          spaceComplexity = `O(n) - ${spaceComplexity}`;
-        } else if (!spaceComplexity.includes('-') && !spaceComplexity.match(/because|driven by|due to|as|for example|where|which is|since|meaning/i)) {
-          const notationMatch = spaceComplexity.match(/O\([^)]+\)/i);
-          if (notationMatch) {
-            const notation = notationMatch[0];
-            const rest = spaceComplexity.substring(notation.length).trim();
-             if (rest && !rest.startsWith('-')) {
-                 spaceComplexity = `${notation} - ${rest}`;
-            } else if (!rest) { // Only notation was present
-                 spaceComplexity = `${notation} - Explanation needed`;
-            }
-          }
-        }
-      } else {
-        console.warn("Could not parse Space Complexity from response.");
-      }
-
-
-      const formattedResponse = {
-        code: code,
-        thoughts: thoughts.length > 0 ? thoughts : ["Solution approach based on efficiency and readability"],
-        time_complexity: timeComplexity,
-        space_complexity: spaceComplexity
-      };
-
-      console.log("Formatted Solution Response:", formattedResponse);
-
+      console.log("Formatted Solution Response:", solution);
 
       return {
         success: true,
-        data: formattedResponse
+        data: solution
       };
-    } catch (error: any) {
-      let errorMsg = "Failed to generate solution";
+    } catch (error: unknown) {
+      let errorMsg = "Failed to generate solution"
+      let isApiKeyError = false
 
       if (axios.isCancel(error)) {
-        errorMsg = "Processing was canceled by the user.";
-      } else if (error?.response?.status === 401) {
-        errorMsg = "Invalid OpenAI API key. Please check your settings.";
-      } else if (error?.response?.status === 429) {
-        errorMsg = "OpenAI API rate limit exceeded or insufficient credits. Please try again later.";
-      } else if (error?.message) {
-        errorMsg = error.message;
+        errorMsg = "Processing was canceled by the user."
+      } else if (error instanceof ApiKeyError) {
+        errorMsg = error.message
+        isApiKeyError = true
+      } else if (error instanceof Error && error.message) {
+        errorMsg = error.message
       }
-
-      console.error("Solution generation error:", error);
+      console.error("Solution generation error:", error)
       return {
         success: false,
-        error: errorMsg
-      };
+        error: errorMsg,
+        isApiKeyError: isApiKeyError
+      }
     }
   }
 
   private async processExtraScreenshotsHelper(
     screenshots: Array<{ path: string; data: string }>,
-    signal: AbortSignal,
+    signal?: AbortSignal,
     additionalText?: string
-  ) {
+  ): Promise<{ success: boolean; data?: DebugResult; error?: string; isApiKeyError?: boolean }> {
     console.log("processExtraScreenshotsHelper received additionalText:", additionalText);
     try {
       const problemInfo = this.deps.getProblemInfo();
       const language = await this.getLanguage();
-      const config = configHelper.loadConfig();
       const mainWindow = this.deps.getMainWindow();
 
       if (!problemInfo) {
         throw new Error("No problem info available");
       }
+      if (!this.aiProvider) {
+        return { success: false, error: "AI Provider not initialized." };
+      }
 
-      // Update progress status
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
           message: "Processing debug screenshots...",
           progress: 30
         });
       }
-
-      // --- Unified Debug Prompts ---
-      const systemDebugPrompt = `You are a coding interview assistant helping debug and improve solutions. Analyze the user's screenshots and text to provide detailed debugging help.
-
-Your response MUST follow this exact structure with these section headers (use ### for headers):
-### Issues Identified
-- List each issue as a bullet point with clear explanation
-
-### Specific Improvements and Corrections
-- List specific code changes needed as bullet points
-
-### Optimizations
-- List any performance optimizations if applicable
-
-### Explanation of Changes Needed
-Here provide a clear explanation of why the changes are needed
-
-### Key Points
-- Summary bullet points of the most important takeaways
-
-If you include code examples, use proper markdown code blocks with language specification (e.g. \`\`\`java).`;
-
-      const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution. The attached screenshots show my current code, error messages, or test case failures.${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}`: ""}`;
-      // --- End of Unified Prompts ---
-
-
-      // Prepare the images for the API call
-      const imageDataList = screenshots.map(screenshot => screenshot.data);
       
-      let debugContent;
-      
-      if (config.apiProvider === ApiProvider.OpenAI) {
-        if (!this.openaiClient) {
-          return {
-            success: false,
-            error: "OpenAI API key not configured. Please check your settings."
-          };
-        }
-        
-        const messages = [
-          {
-            role: "system" as const, 
-            content: systemDebugPrompt
-          },
-          {
-            role: "user" as const,
-            content: [
-              {
-                type: "text" as const, 
-                text: userDebugPrompt 
-              },
-              ...imageDataList.map(data => ({
-                type: "image_url" as const,
-                image_url: { url: `data:image/png;base64,${data}` }
-              }))
-            ]
-          }
-        ];
+      const imageDataList = screenshots.map(s => ({ data: s.data }));
+      const debugResult = await this.aiProvider.debugSolution(
+        problemInfo,
+        imageDataList,
+        language,
+        signal,
+        additionalText
+      );
 
-        if (mainWindow) {
-          mainWindow.webContents.send("processing-status", {
-            message: "Analyzing code and generating debug feedback...",
-            progress: 60
-          });
-        }
-
-        const debugResponse = await this.openaiClient.chat.completions.create({
-          model: config.debuggingModel || "gpt-4o",
-          messages: messages,
-          max_completion_tokens: API_CONFIG.maxTokens.debugging,
-        });
-        
-        debugContent = debugResponse.choices[0].message.content;
-
-      } else if (config.apiProvider === ApiProvider.Gemini)  {
-        if (!this.geminiClient) {
-          return {
-            success: false,
-            error: "Gemini API key not configured. Please check your settings."
-          };
-        }
-
-        try {
-          // Gemini and Anthropic models work best with a single, combined prompt
-          // instead of separate system/user roles like OpenAI.
-          const combinedPrompt = `${systemDebugPrompt}\n\n${userDebugPrompt}`;
-          const contentParts = [
-            { text: combinedPrompt },
-            ...imageDataList.map(data => ({
-              inlineData: {
-                mimeType: "image/png",
-                data: data
-              }
-            }))
-          ];
-
-          // Call Gemini SDK
-          const response = await this.geminiClient.models.generateContent({
-            model: config.debuggingModel || "gemini-2.0-flash",
-            contents: [
-              {
-                role: "user",
-                parts: contentParts
-              }
-            ],
-            config: {
-              temperature: 0.2,
-              maxOutputTokens: API_CONFIG.maxTokens.debugging
-            }
-          });
-
-          if (!response || !response.text || response.text.trim() === "") {
-            throw new Error("Empty response from Gemini API");
-          }
-
-          debugContent = response.text;
-        } catch (error) {
-          console.error("Error using Gemini API for debugging:", error);
-          return {
-            success: false,
-            error: "Failed to process debug request with Gemini API. Please check your API key or try again later."
-          };
-        }
-      } else if (config.apiProvider === ApiProvider.Anthropic) {
-        if (!this.anthropicClient) {
-          return {
-            success: false,
-            error: "Anthropic API key not configured. Please check your settings."
-          };
-        }
-        
-        try {
-          // Gemini and Anthropic models work best with a single, combined prompt
-          // instead of separate system/user roles like OpenAI.
-          const combinedPrompt = `${systemDebugPrompt}\n\n${userDebugPrompt}`;
-          const messages = [
-            {
-              role: "user" as const,
-              content: [
-                {
-                  type: "text" as const,
-                  text: combinedPrompt
-                },
-                ...imageDataList.map(data => ({
-                  type: "image" as const,
-                  source: {
-                    type: "base64" as const,
-                    media_type: "image/png" as const, 
-                    data: data
-                  }
-                }))
-              ]
-            }
-          ];
-
-          if (mainWindow) {
-            mainWindow.webContents.send("processing-status", {
-              message: "Analyzing code and generating debug feedback with Claude...",
-              progress: 60
-            });
-          }
-
-          const response = await this.anthropicClient.messages.create({
-            model: config.debuggingModel || "claude-3-7-sonnet-20250219",
-            max_tokens: API_CONFIG.maxTokens.debugging,
-            messages: messages,
-            temperature: 0.2
-          });
-          
-          debugContent = (response.content[0] as { type: 'text', text: string }).text;
-        } catch (error: any) {
-          console.error("Error using Anthropic API for debugging:", error);
-          
-          if (error.status === 429) {
-            return { 
-              success: false, 
-              error: "Claude API rate limit exceeded. Please wait a few minutes before trying again." 
-            };
-          } else if (error.status === 413 || (error.message && error.message.includes("token"))) {
-            return { 
-              success: false, 
-              error: "Your screenshots contain too much information for Claude to process. Switch to OpenAI or Gemini in settings which can handle larger inputs."
-            };
-          }
-          
-          return { 
-            success: false, 
-            error: "Failed to process debug request with Anthropic API. Please check your API key or try again later."
-          };
-        }
-      }
-      
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
           message: "Debug analysis complete",
@@ -1293,40 +511,27 @@ If you include code examples, use proper markdown code blocks with language spec
         });
       }
 
-      // Extract code block if present, else use default message
-      const extractedCode = (debugContent.match(/```(?:[a-zA-Z]+)?([\s\S]*?)```/)?.[1] || "// Debug mode - see analysis below").trim();
-
-      // Add markdown headers if missing
-      let formattedDebugContent = debugContent;
-      if (!/#\s/.test(debugContent)) {
-        formattedDebugContent = debugContent
-          .replace(/issues identified|problems found|bugs found/i, '## Issues Identified')
-          .replace(/code improvements|improvements|suggested changes/i, '## Code Improvements')
-          .replace(/optimizations|performance improvements/i, '## Optimizations')
-          .replace(/explanation|detailed analysis/i, '## Explanation');
-      }
-
-      // Extract up to 5 bullet points, or use default
-      const thoughts = (formattedDebugContent.match(/(?:^|\n)[ ]*(?:[-*•]|\d+\.)[ ]+([^\n]+)/g) || [])
-        .map(point => point.replace(/^[ ]*(?:[-*•]|\d+\.)[ ]+/, '').trim())
-        .slice(0, 5);
-
       return {
         success: true,
-        data: {
-          code: extractedCode,
-          debug_analysis: formattedDebugContent,
-          thoughts: thoughts.length ? thoughts : ["Debug analysis based on your screenshots"],
-          time_complexity: "N/A - Debug mode",
-          space_complexity: "N/A - Debug mode"
-        }
+        data: debugResult
       };
-    } catch (error: any) {
-      console.error("Debug processing error:", error);
-      return { 
-        success: false, 
-        error: error.message || "Failed to process debug request" 
-      };
+    } catch (error: unknown) {
+      console.error("Debug processing error:", error)
+      let errorMsg = "Failed to process debug request"
+      let isApiKeyError = false
+      if (axios.isCancel(error)) {
+        errorMsg = "Processing was canceled by the user."
+      } else if (error instanceof ApiKeyError) {
+        errorMsg = error.message
+        isApiKeyError = true
+      } else if (error instanceof Error) {
+        errorMsg = error.message || "Failed to process debug request"
+      }
+      return {
+        success: false,
+        error: errorMsg,
+        isApiKeyError: isApiKeyError
+      }
     }
   }
 
