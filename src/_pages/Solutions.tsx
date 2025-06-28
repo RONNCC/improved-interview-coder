@@ -6,12 +6,32 @@ import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism"
 
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 
-import { Solution as SolutionType, DebugResult, Screenshot } from "../types"
+import { Screenshot } from "../types"
 import SolutionCommands from "../components/Solutions/SolutionCommands"
 import Debug from "./Debug"
 import { useToast } from "../contexts/toast"
 import { COMMAND_KEY } from "../utils/platform"
 import { Button } from "../components/ui/button"
+
+export interface Solution {
+  code: string
+  thoughts: string[]
+  time_complexity: string
+  space_complexity: string
+}
+
+export interface ProblemStatementData {
+  problem_statement: string
+  constraints: string
+}
+
+export interface DebugResult {
+  code: string
+  debug_analysis: string
+  thoughts: string[]
+  time_complexity: string
+  space_complexity: string
+}
 
 export const ContentSection = ({
   title,
@@ -206,7 +226,7 @@ const Solutions: React.FC<SolutionsProps> = ({
   const [debugProcessing, setDebugProcessing] = useState(false)
   const [problemStatementData, setProblemStatementData] =
     useState<ProblemStatementData | null>(null)
-  const [solutionData, setSolutionData] = useState<SolutionType | null>(null)
+  const [solutionData, setSolutionData] = useState<Solution | null>(null)
   const [thoughtsData, setThoughtsData] = useState<string[] | null>(null)
   const [timeComplexityData, setTimeComplexityData] = useState<string | null>(
     null
@@ -332,7 +352,7 @@ const Solutions: React.FC<SolutionsProps> = ({
         if (!solution) {
           setView("queue")
         }
-        setSolutionData(solution?.code ? solution as SolutionType : null)
+        setSolutionData(solution?.code ? (solution as Solution) : null)
         setThoughtsData(solution?.thoughts || null)
         setTimeComplexityData(solution?.time_complexity || null)
         setSpaceComplexityData(solution?.space_complexity || null)
@@ -353,7 +373,7 @@ const Solutions: React.FC<SolutionsProps> = ({
         }
 
         queryClient.setQueryData(["solution"], solutionData)
-        setSolutionData(solutionData as SolutionType)
+        setSolutionData(solutionData as Solution)
         setThoughtsData(solutionData.thoughts || null)
         setTimeComplexityData(solutionData.time_complexity || null)
         setSpaceComplexityData(solutionData.space_complexity || null)
@@ -435,7 +455,7 @@ const Solutions: React.FC<SolutionsProps> = ({
           space_complexity: string
         } | null
 
-        setSolutionData(solution?.code ? solution as SolutionType : null)
+        setSolutionData(solution?.code ? (solution as Solution) : null)
         setThoughtsData(solution?.thoughts ?? null)
         setTimeComplexityData(solution?.time_complexity ?? null)
         setSpaceComplexityData(solution?.space_complexity ?? null)

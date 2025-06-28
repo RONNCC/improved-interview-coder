@@ -240,52 +240,6 @@ async function createWindow(): Promise<void> {
 
   state.mainWindow = new BrowserWindow(windowSettings)
 
-  // Add more detailed logging for window events
-  state.mainWindow.webContents.on("did-finish-load", () => {
-    console.log("Window finished loading")
-  })
-  state.mainWindow.webContents.on(
-    "did-fail-load",
-    async (event, errorCode, errorDescription) => {
-      console.error("Window failed to load:", errorCode, errorDescription)
-      if (isDev) {
-        // In development, retry loading after a short delay
-        console.log("Retrying to load development server...")
-        setTimeout(() => {
-          state.mainWindow?.loadURL("http://localhost:54321").catch((error) => {
-            console.error("Failed to load dev server on retry:", error)
-          })
-        }, 1000)
-      }
-    }
-  )
-
-  if (isDev) {
-    // In development, load from the dev server
-    console.log("Loading from development server: http://localhost:54321")
-    state.mainWindow.loadURL("http://localhost:54321").catch((error) => {
-      console.error("Failed to load dev server, falling back to local file:", error)
-      // Fallback to local file if dev server is not available
-      const indexPath = path.join(__dirname, "../dist/index.html")
-      console.log("Falling back to:", indexPath)
-      if (fs.existsSync(indexPath)) {
-        state.mainWindow.loadFile(indexPath)
-      } else {
-        console.error("Could not find index.html in dist folder")
-      }
-    })
-  } else {
-    // In production, load from the built files
-    const indexPath = path.join(__dirname, "../dist/index.html")
-    console.log("Loading production build:", indexPath)
-    
-    if (fs.existsSync(indexPath)) {
-      state.mainWindow.loadFile(indexPath)
-    } else {
-      console.error("Could not find index.html in dist folder")
-    }
-  }
-
   // Configure window behavior
   state.mainWindow.webContents.setZoomFactor(1)
   if (isDev) {
@@ -333,6 +287,52 @@ async function createWindow(): Promise<void> {
   // Prevent the window from being captured by screen recording
   state.mainWindow.webContents.setBackgroundThrottling(false)
   state.mainWindow.webContents.setFrameRate(60)
+
+  // Add more detailed logging for window events
+  state.mainWindow.webContents.on("did-finish-load", () => {
+    console.log("Window finished loading")
+  })
+  state.mainWindow.webContents.on(
+    "did-fail-load",
+    async (event, errorCode, errorDescription) => {
+      console.error("Window failed to load:", errorCode, errorDescription)
+      if (isDev) {
+        // In development, retry loading after a short delay
+        console.log("Retrying to load development server...")
+        setTimeout(() => {
+          state.mainWindow?.loadURL("http://localhost:54321").catch((error) => {
+            console.error("Failed to load dev server on retry:", error)
+          })
+        }, 1000)
+      }
+    }
+  )
+
+  if (isDev) {
+    // In development, load from the dev server
+    console.log("Loading from development server: http://localhost:54321")
+    state.mainWindow.loadURL("http://localhost:54321").catch((error) => {
+      console.error("Failed to load dev server, falling back to local file:", error)
+      // Fallback to local file if dev server is not available
+      const indexPath = path.join(__dirname, "../dist/index.html")
+      console.log("Falling back to:", indexPath)
+      if (fs.existsSync(indexPath)) {
+        state.mainWindow.loadFile(indexPath)
+      } else {
+        console.error("Could not find index.html in dist folder")
+      }
+    })
+  } else {
+    // In production, load from the built files
+    const indexPath = path.join(__dirname, "../dist/index.html")
+    console.log("Loading production build:", indexPath)
+    
+    if (fs.existsSync(indexPath)) {
+      state.mainWindow.loadFile(indexPath)
+    } else {
+      console.error("Could not find index.html in dist folder")
+    }
+  }
 
   // Set up window listeners
   state.mainWindow.on("move", handleWindowMove)
@@ -390,10 +390,7 @@ function handleWindowClosed(): void {
 // Window visibility functions
 function hideMainWindow(): void {
   if (!state.mainWindow?.isDestroyed()) {
-    const bounds = state.mainWindow.getBounds();
-    state.windowPosition = { x: bounds.x, y: bounds.y };
-    state.windowSize = { width: bounds.width, height: bounds.height };
-    state.mainWindow.hide();
+    state.mainWindow.hide(); // Use hide() for more reliable visibility toggling
     state.isWindowVisible = false;
     console.log('Window hidden with .hide()');
   }
@@ -401,23 +398,18 @@ function hideMainWindow(): void {
 
 function showMainWindow(): void {
   if (!state.mainWindow?.isDestroyed()) {
-    if (state.windowPosition && state.windowSize) {
-      state.mainWindow.setBounds({
-        ...state.windowPosition,
-        ...state.windowSize
-      });
-    }
-    state.mainWindow.setIgnoreMouseEvents(false);
+    // Ensure window properties are set correctly on show
     state.mainWindow.setAlwaysOnTop(true, "screen-saver", 1);
     state.mainWindow.setVisibleOnAllWorkspaces(true, {
       visibleOnFullScreen: true
     });
     state.mainWindow.setContentProtection(true);
-    state.mainWindow.setOpacity(0); // Set opacity to 0 before showing
-    state.mainWindow.showInactive(); // Use showInactive instead of show+focus
-    state.mainWindow.setOpacity(1); // Then set opacity to 1 after showing
+
+    const savedOpacity = configHelper.getOpacity();
+    state.mainWindow.setOpacity(savedOpacity); // Restore opacity before showing
+    state.mainWindow.showInactive(); // Use showInactive to avoid stealing focus
     state.isWindowVisible = true;
-    console.log('Window shown with showInactive(), opacity set to 1');
+    console.log(`Window shown with .showInactive(), opacity set to ${savedOpacity}`);
   }
 }
 

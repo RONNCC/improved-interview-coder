@@ -1,9 +1,3 @@
-export interface ScreenshotFile {
-  path: string
-  preview: string
-  code: string
-}
-
 export interface Screenshot {
   id: string
   path: string
@@ -17,25 +11,12 @@ export enum ApiProvider {
   Anthropic = "anthropic"
 }
 
-export interface Solution {
-  code: string;
-  thoughts: string[];
-  time_complexity: string;
-  space_complexity: string;
-}
-
 export interface ProblemStatementData {
   problem_statement: string;
-  constraints: string;
+  constraints?: string;
+  example_input?: string;
+  example_output?: string;
 }
-
-export interface DebugResult {
-  fileName: string;
-  code: string;
-  language: string;
-  explanation: string;
-  diff: string;
-} 
 
 export interface ElectronAPI {
   // Original methods
