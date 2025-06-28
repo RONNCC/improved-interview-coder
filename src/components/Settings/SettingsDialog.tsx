@@ -12,7 +12,7 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Settings } from "lucide-react";
 import { useToast } from "../../contexts/toast";
-import { ApiProvider } from "../../types/electron";
+import { ApiProvider } from "../../types";
 import { PROVIDER_CONFIGS } from "../../config/providers";
 
 type AIModel = {

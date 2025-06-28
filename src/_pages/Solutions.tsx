@@ -6,11 +6,12 @@ import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism"
 
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 
-import { ProblemStatementData } from "../types/solutions"
+import { Solution as SolutionType, DebugResult, Screenshot } from "../types"
 import SolutionCommands from "../components/Solutions/SolutionCommands"
 import Debug from "./Debug"
 import { useToast } from "../contexts/toast"
 import { COMMAND_KEY } from "../utils/platform"
+import { Button } from "../components/ui/button"
 
 export const ContentSection = ({
   title,
@@ -186,6 +187,9 @@ export interface SolutionsProps {
   setLanguage: (language: string) => void
   additionalText: string
   setAdditionalText: (text: string) => void
+  initialData: {
+    // ... existing code ...
+  }
 }
 const Solutions: React.FC<SolutionsProps> = ({
   setView,
@@ -193,7 +197,8 @@ const Solutions: React.FC<SolutionsProps> = ({
   currentLanguage,
   setLanguage,
   additionalText,
-  setAdditionalText
+  setAdditionalText,
+  initialData
 }) => {
   const queryClient = useQueryClient()
   const contentRef = useRef<HTMLDivElement>(null)
@@ -201,7 +206,7 @@ const Solutions: React.FC<SolutionsProps> = ({
   const [debugProcessing, setDebugProcessing] = useState(false)
   const [problemStatementData, setProblemStatementData] =
     useState<ProblemStatementData | null>(null)
-  const [solutionData, setSolutionData] = useState<string | null>(null)
+  const [solutionData, setSolutionData] = useState<SolutionType | null>(null)
   const [thoughtsData, setThoughtsData] = useState<string[] | null>(null)
   const [timeComplexityData, setTimeComplexityData] = useState<string | null>(
     null
@@ -215,13 +220,6 @@ const Solutions: React.FC<SolutionsProps> = ({
 
   const [isResetting, setIsResetting] = useState(false)
 
-  interface Screenshot {
-    id: string
-    path: string
-    preview: string
-    timestamp: number
-  }
-
   const [extraScreenshots, setExtraScreenshots] = useState<Screenshot[]>([])
 
   useEffect(() => {
@@ -229,14 +227,14 @@ const Solutions: React.FC<SolutionsProps> = ({
       try {
         const existing = await window.electronAPI.getScreenshots()
         console.log("Raw screenshot data:", existing)
-        const screenshots = (Array.isArray(existing) ? existing : []).map(
-          (p) => ({
-            id: p.path,
-            path: p.path,
-            preview: p.preview,
-            timestamp: Date.now()
-          })
-        )
+        const screenshots = (
+          Array.isArray(existing.previews) ? existing.previews : []
+        ).map((p) => ({
+          id: p.path,
+          path: p.path,
+          preview: p.preview,
+          timestamp: Date.now()
+        }))
         console.log("Processed screenshots:", screenshots)
         setExtraScreenshots(screenshots)
       } catch (error) {
@@ -246,7 +244,7 @@ const Solutions: React.FC<SolutionsProps> = ({
     }
 
     fetchScreenshots()
-  }, [solutionData])
+  }, [])
 
   const { showToast } = useToast()
 
@@ -278,14 +276,14 @@ const Solutions: React.FC<SolutionsProps> = ({
       window.electronAPI.onScreenshotTaken(async () => {
         try {
           const existing = await window.electronAPI.getScreenshots()
-          const screenshots = (Array.isArray(existing) ? existing : []).map(
-            (p) => ({
-              id: p.path,
-              path: p.path,
-              preview: p.preview,
-              timestamp: Date.now()
-            })
-          )
+          const screenshots = (
+            Array.isArray(existing.previews) ? existing.previews : []
+          ).map((p) => ({
+            id: p.path,
+            path: p.path,
+            preview: p.preview,
+            timestamp: Date.now()
+          }))
           setExtraScreenshots(screenshots)
         } catch (error) {
           console.error("Error loading extra screenshots:", error)
@@ -334,7 +332,7 @@ const Solutions: React.FC<SolutionsProps> = ({
         if (!solution) {
           setView("queue")
         }
-        setSolutionData(solution?.code || null)
+        setSolutionData(solution?.code ? solution as SolutionType : null)
         setThoughtsData(solution?.thoughts || null)
         setTimeComplexityData(solution?.time_complexity || null)
         setSpaceComplexityData(solution?.space_complexity || null)
@@ -355,7 +353,7 @@ const Solutions: React.FC<SolutionsProps> = ({
         }
 
         queryClient.setQueryData(["solution"], solutionData)
-        setSolutionData(solutionData.code || null)
+        setSolutionData(solutionData as SolutionType)
         setThoughtsData(solutionData.thoughts || null)
         setTimeComplexityData(solutionData.time_complexity || null)
         setSpaceComplexityData(solutionData.space_complexity || null)
@@ -437,7 +435,7 @@ const Solutions: React.FC<SolutionsProps> = ({
           space_complexity: string
         } | null
 
-        setSolutionData(solution?.code ?? null)
+        setSolutionData(solution?.code ? solution as SolutionType : null)
         setThoughtsData(solution?.thoughts ?? null)
         setTimeComplexityData(solution?.time_complexity ?? null)
         setSpaceComplexityData(solution?.space_complexity ?? null)
@@ -462,14 +460,14 @@ const Solutions: React.FC<SolutionsProps> = ({
       if (response.success) {
         // Fetch and update screenshots after successful deletion
         const existing = await window.electronAPI.getScreenshots()
-        const screenshots = (Array.isArray(existing) ? existing : []).map(
-          (p) => ({
-            id: p.path,
-            path: p.path,
-            preview: p.preview,
-            timestamp: Date.now()
-          })
-        )
+        const screenshots = (
+          Array.isArray(existing.previews) ? existing.previews : []
+        ).map((p) => ({
+          id: p.path,
+          path: p.path,
+          preview: p.preview,
+          timestamp: Date.now()
+        }))
         setExtraScreenshots(screenshots)
       } else {
         console.error("Failed to delete extra screenshot:", response.error)
@@ -575,7 +573,7 @@ const Solutions: React.FC<SolutionsProps> = ({
 
                     <SolutionSection
                       title="Solution"
-                      content={solutionData}
+                      content={solutionData.code}
                       isLoading={!solutionData}
                       currentLanguage={currentLanguage}
                     />

@@ -1,5 +1,5 @@
 import { AppConfig } from "../ConfigHelper";
-import { ApiProvider } from "../../src/types/electron";
+import { ElectronApiProvider } from "../providers";
 import { IAiProvider } from "./IAiProvider";
 import { OpenAiProvider } from "./OpenAiProvider";
 import { GeminiProvider } from "./GeminiProvider"; // Assumes GeminiProvider.ts exists
@@ -14,8 +14,8 @@ interface ProviderFactory {
   createProvider: (client: any, config: AppConfig) => IAiProvider;
 }
 
-const providerFactories: Record<ApiProvider, ProviderFactory> = {
-  [ApiProvider.OpenAI]: {
+const providerFactories: Record<ElectronApiProvider, ProviderFactory> = {
+  [ElectronApiProvider.OpenAI]: {
     createClient: (apiKey: string) => new OpenAI({
       apiKey,
       timeout: 60000,
@@ -23,11 +23,11 @@ const providerFactories: Record<ApiProvider, ProviderFactory> = {
     }),
     createProvider: (client: OpenAI, config: AppConfig) => new OpenAiProvider(client, config)
   },
-  [ApiProvider.Gemini]: {
+  [ElectronApiProvider.Gemini]: {
     createClient: (apiKey: string) => new GoogleGenAI({ apiKey }),
     createProvider: (client: GoogleGenAI, config: AppConfig) => new GeminiProvider(client, config)
   },
-  [ApiProvider.Anthropic]: {
+  [ElectronApiProvider.Anthropic]: {
     createClient: (apiKey: string) => new Anthropic({
       apiKey,
       timeout: 60000,
@@ -63,7 +63,7 @@ export function createAiProvider(config: AppConfig): IAiProvider | null {
  * Register a new provider factory (for future extensibility)
  */
 export function registerProviderFactory(
-    provider: ApiProvider, 
+    provider: ElectronApiProvider, 
     factory: ProviderFactory
 ): void {
     providerFactories[provider] = factory;

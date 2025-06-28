@@ -1,9 +1,41 @@
-// Shared API Provider enum for both frontend and backend
+export interface ScreenshotFile {
+  path: string
+  preview: string
+  code: string
+}
+
+export interface Screenshot {
+  id: string
+  path: string
+  timestamp: number
+  preview: string // Base64 thumbnail
+}
+
 export enum ApiProvider {
   OpenAI = "openai",
   Gemini = "gemini",
   Anthropic = "anthropic"
 }
+
+export interface Solution {
+  code: string;
+  thoughts: string[];
+  time_complexity: string;
+  space_complexity: string;
+}
+
+export interface ProblemStatementData {
+  problem_statement: string;
+  constraints: string;
+}
+
+export interface DebugResult {
+  fileName: string;
+  code: string;
+  language: string;
+  explanation: string;
+  diff: string;
+} 
 
 export interface ElectronAPI {
   // Original methods
@@ -103,5 +135,6 @@ declare global {
     __LANGUAGE__: string
     __IS_INITIALIZED__: boolean
     __AUTH_TOKEN__?: string | null
+    supabase: any
   }
 }

@@ -7,7 +7,6 @@ import { configHelper } from "./ConfigHelper"
 import { ScreenshotHelper } from "./ScreenshotHelper"
 import { IAiProvider, ApiKeyError, Solution, DebugResult } from "./ai-providers/IAiProvider"
 import { IProcessingHelperDeps } from "./main"
-import { ApiProvider } from "../src/types/electron"
 
 // API Configuration
 export const API_CONFIG = {

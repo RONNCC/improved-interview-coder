@@ -393,10 +393,9 @@ function hideMainWindow(): void {
     const bounds = state.mainWindow.getBounds();
     state.windowPosition = { x: bounds.x, y: bounds.y };
     state.windowSize = { width: bounds.width, height: bounds.height };
-    state.mainWindow.setIgnoreMouseEvents(true, { forward: true });
-    state.mainWindow.setOpacity(0);
+    state.mainWindow.hide();
     state.isWindowVisible = false;
-    console.log('Window hidden, opacity set to 0');
+    console.log('Window hidden with .hide()');
   }
 }
 

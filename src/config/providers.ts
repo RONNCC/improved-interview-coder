@@ -1,4 +1,4 @@
-import { ApiProvider } from "../types/electron";
+import { ApiProvider } from "../types";
 
 export interface ProviderUIConfig {
   displayName: string;
@@ -12,15 +12,6 @@ export interface ProviderUIConfig {
     solutionModel: string;
     debuggingModel: string;
   };
-}
-
-export interface ProviderBackendConfig {
-  models: string[];
-  defaultModel: string;
-  keyPrefix: string;
-  keyPattern: RegExp;
-  displayName: string;
-  description: string;
 }
 
 // Centralized provider configurations
@@ -78,60 +69,14 @@ export const PROVIDER_CONFIGS: Record<ApiProvider, ProviderUIConfig> = {
   }
 };
 
-// Backend configurations (for ConfigHelper)
-export const PROVIDER_BACKEND_CONFIGS: Record<ApiProvider, ProviderBackendConfig> = {
-  [ApiProvider.OpenAI]: {
-    models: [
-      "gpt-4.1",
-      "o4-mini",
-      "gpt-4o",
-      "gpt-3.5-turbo",
-      "o3",
-      "gpt-4.5-preview-2025-02-27",
-      "gpt-4.1-mini"
-    ],
-    defaultModel: "gpt-4o",
-    keyPrefix: "sk-",
-    keyPattern: /^sk-[a-zA-Z0-9]{32,}$/,
-    displayName: "OpenAI",
-    description: "GPT-4o models"
-  },
-  [ApiProvider.Gemini]: {
-    models: [
-      "gemini-2.5-pro-preview-05-06",
-      "gemini-2.0-flash",
-      "gemini-2.5-flash-preview-05-20"
-    ],
-    defaultModel: "gemini-2.0-flash",
-    keyPrefix: "",
-    keyPattern: /^[a-zA-Z0-9]{10,}$/,
-    displayName: "Gemini",
-    description: "Gemini 1.5 models"
-  },
-  [ApiProvider.Anthropic]: {
-    models: [
-      "claude-3-7-sonnet-20250219",
-      "claude-3-5-sonnet-20241022",
-      "claude-3-opus-20240229"
-    ],
-    defaultModel: "claude-3-7-sonnet-20250219",
-    keyPrefix: "sk-ant-",
-    keyPattern: /^sk-ant-[a-zA-Z0-9]{32,}$/,
-    displayName: "Anthropic",
-    description: "Claude models"
-  }
-};
-
 /**
  * Register a new provider configuration (for future extensibility)
  */
 export function registerProviderConfig(
   provider: ApiProvider,
-  uiConfig: ProviderUIConfig,
-  backendConfig: ProviderBackendConfig
+  uiConfig: ProviderUIConfig
 ): void {
   PROVIDER_CONFIGS[provider] = uiConfig;
-  PROVIDER_BACKEND_CONFIGS[provider] = backendConfig;
 }
 
 /**

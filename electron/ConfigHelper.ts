@@ -4,12 +4,11 @@ import path from "node:path"
 import { app } from "electron"
 import { EventEmitter } from "events"
 import { OpenAI } from "openai"
-import { ApiProvider } from "../src/types/electron"
-import { PROVIDER_BACKEND_CONFIGS } from "../src/config/providers"
+import { PROVIDER_BACKEND_CONFIGS, ElectronApiProvider } from './providers'
 
 export interface AppConfig {
-  apiKeys: Record<ApiProvider, string>;
-  apiProvider: ApiProvider;
+  apiKeys: Record<ElectronApiProvider, string>;
+  apiProvider: ElectronApiProvider;
   extractionModel: string;
   solutionModel: string;
   debuggingModel: string;
@@ -30,11 +29,11 @@ export class ConfigHelper extends EventEmitter {
   private configPath: string;
   
   // Use centralized provider registry
-  private readonly providerRegistry: Record<ApiProvider, ModelConfig> = PROVIDER_BACKEND_CONFIGS;
+  private readonly providerRegistry: Record<ElectronApiProvider, ModelConfig> = PROVIDER_BACKEND_CONFIGS;
 
   private readonly defaultConfig: AppConfig = {
     apiKeys: this.createEmptyApiKeys(),
-    apiProvider: ApiProvider.Gemini,
+    apiProvider: ElectronApiProvider.Gemini,
     extractionModel: "gemini-2.0-flash",
     solutionModel: "gemini-2.0-flash",
     debuggingModel: "gemini-2.0-flash",
@@ -67,17 +66,17 @@ export class ConfigHelper extends EventEmitter {
     }
   }
 
-  private detectProviderFromKey(apiKey: string): ApiProvider {
+  private detectProviderFromKey(apiKey: string): ElectronApiProvider {
     const trimmedKey = apiKey.trim();
     if (trimmedKey.startsWith('sk-ant-')) {
-      return ApiProvider.Anthropic;
+      return ElectronApiProvider.Anthropic;
     } else if (trimmedKey.startsWith('sk-')) {
-      return ApiProvider.OpenAI;
+      return ElectronApiProvider.OpenAI;
     }
-    return ApiProvider.Gemini;
+    return ElectronApiProvider.Gemini;
   }
 
-  private sanitizeModel(model: string, provider: ApiProvider): string {
+  private sanitizeModel(model: string, provider: ElectronApiProvider): string {
     const config = this.providerRegistry[provider];
     if (!config.models.includes(model)) {
       console.warn(
@@ -88,12 +87,12 @@ export class ConfigHelper extends EventEmitter {
     return model;
   }
 
-  private validateApiKeyFormat(apiKey: string, provider: ApiProvider): boolean {
+  private validateApiKeyFormat(apiKey: string, provider: ElectronApiProvider): boolean {
     const config = this.providerRegistry[provider];
     return config.keyPattern.test(apiKey.trim());
   }
 
-  private getDefaultModelsForProvider(provider: ApiProvider): {
+  private getDefaultModelsForProvider(provider: ElectronApiProvider): {
     extractionModel: string;
     solutionModel: string;
     debuggingModel: string;
@@ -120,12 +119,12 @@ export class ConfigHelper extends EventEmitter {
       const migratedConfig = this.migrateConfigIfNeeded(config);
       
       // Ensure valid provider
-      if (!Object.values(ApiProvider).includes(migratedConfig.apiProvider)) {
-        migratedConfig.apiProvider = ApiProvider.Gemini;
+      if (!Object.values(ElectronApiProvider).includes(migratedConfig.apiProvider)) {
+        migratedConfig.apiProvider = ElectronApiProvider.Gemini;
       }
       
       // Sanitize models
-      const provider = migratedConfig.apiProvider as ApiProvider;
+      const provider = migratedConfig.apiProvider as ElectronApiProvider;
       if (migratedConfig.extractionModel) {
         migratedConfig.extractionModel = this.sanitizeModel(migratedConfig.extractionModel, provider);
       }
@@ -152,7 +151,7 @@ export class ConfigHelper extends EventEmitter {
       console.log("Migrating config from old format to new format");
       
       const oldApiKey = config.apiKey;
-      const oldProvider = (config.apiProvider || ApiProvider.Gemini) as ApiProvider;
+      const oldProvider = (config.apiProvider || ElectronApiProvider.Gemini) as ElectronApiProvider;
       
       // Create new apiKeys structure with all registered providers
       const newApiKeys = this.createEmptyApiKeys();
@@ -209,7 +208,7 @@ export class ConfigHelper extends EventEmitter {
       }
       
       // Sanitize models in updates
-      const provider = (updates.apiProvider || currentConfig.apiProvider) as ApiProvider;
+      const provider = (updates.apiProvider || currentConfig.apiProvider) as ElectronApiProvider;
       ['extractionModel', 'solutionModel', 'debuggingModel'].forEach(modelKey => {
         const key = modelKey as keyof Pick<AppConfig, 'extractionModel' | 'solutionModel' | 'debuggingModel'>;
         if (updates[key]) {
@@ -239,7 +238,7 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Get API key for a specific provider
    */
-  public getApiKey(provider: ApiProvider): string {
+  public getApiKey(provider: ElectronApiProvider): string {
     const config = this.loadConfig();
     return config.apiKeys[provider] || "";
   }
@@ -247,7 +246,7 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Set API key for a specific provider
    */
-  public setApiKey(provider: ApiProvider, apiKey: string): void {
+  public setApiKey(provider: ElectronApiProvider, apiKey: string): void {
     const currentConfig = this.loadConfig();
     const updatedApiKeys = { ...currentConfig.apiKeys, [provider]: apiKey };
     this.updateConfig({ apiKeys: updatedApiKeys });
@@ -264,12 +263,12 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Check if API key exists for a specific provider
    */
-  public hasApiKeyForProvider(provider: ApiProvider): boolean {
+  public hasApiKeyForProvider(provider: ElectronApiProvider): boolean {
     const config = this.loadConfig();
     return !!config.apiKeys[provider] && config.apiKeys[provider].trim().length > 0;
   }
   
-  public isValidApiKeyFormat(apiKey: string, provider?: ApiProvider): boolean {
+  public isValidApiKeyFormat(apiKey: string, provider?: ElectronApiProvider): boolean {
     const detectedProvider = provider || this.detectProviderFromKey(apiKey);
     return this.validateApiKeyFormat(apiKey, detectedProvider);
   }
@@ -294,7 +293,7 @@ export class ConfigHelper extends EventEmitter {
   
   public async testApiKey(
     apiKey: string,
-    provider?: ApiProvider
+    provider?: ElectronApiProvider
   ): Promise<{ valid: boolean; error?: string }> {
     const detectedProvider = provider || this.detectProviderFromKey(apiKey);
     
@@ -303,11 +302,11 @@ export class ConfigHelper extends EventEmitter {
     }
 
     switch (detectedProvider) {
-      case ApiProvider.OpenAI:
+      case ElectronApiProvider.OpenAI:
         return this.testOpenAIKey(apiKey);
-      case ApiProvider.Gemini:
+      case ElectronApiProvider.Gemini:
         return this.testGeminiKey(apiKey);
-      case ApiProvider.Anthropic:
+      case ElectronApiProvider.Anthropic:
         return this.testAnthropicKey(apiKey);
       default:
         return { valid: false, error: "Unknown API provider" };
@@ -354,7 +353,7 @@ export class ConfigHelper extends EventEmitter {
   private async testAnthropicKey(apiKey: string): Promise<{valid: boolean, error?: string}> {
     try {
       // TODO: Implement actual Anthropic API validation
-      if (this.validateApiKeyFormat(apiKey, ApiProvider.Anthropic)) {
+      if (this.validateApiKeyFormat(apiKey, ElectronApiProvider.Anthropic)) {
         return { valid: true };
       }
       return { valid: false, error: 'Invalid Anthropic API key format.' };
@@ -370,39 +369,39 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Create empty API keys object for all registered providers
    */
-  private createEmptyApiKeys(): Record<ApiProvider, string> {
+  private createEmptyApiKeys(): Record<ElectronApiProvider, string> {
     const apiKeys: Record<string, string> = {};
     Object.keys(this.providerRegistry).forEach(provider => {
       apiKeys[provider] = "";
     });
-    return apiKeys as Record<ApiProvider, string>;
+    return apiKeys as Record<ElectronApiProvider, string>;
   }
 
   /**
    * Get all registered providers
    */
-  public getRegisteredProviders(): ApiProvider[] {
-    return Object.keys(this.providerRegistry) as ApiProvider[];
+  public getRegisteredProviders(): ElectronApiProvider[] {
+    return Object.keys(this.providerRegistry) as ElectronApiProvider[];
   }
 
   /**
    * Get provider configuration
    */
-  public getProviderConfig(provider: ApiProvider): ModelConfig | undefined {
+  public getProviderConfig(provider: ElectronApiProvider): ModelConfig | undefined {
     return this.providerRegistry[provider];
   }
 
   /**
    * Get all provider configurations
    */
-  public getAllProviderConfigs(): Record<ApiProvider, ModelConfig> {
-    return this.providerRegistry as Record<ApiProvider, ModelConfig>;
+  public getAllProviderConfigs(): Record<ElectronApiProvider, ModelConfig> {
+    return this.providerRegistry as Record<ElectronApiProvider, ModelConfig>;
   }
 
   /**
    * Register a new provider (for future extensibility)
    */
-  public registerProvider(provider: ApiProvider, config: ModelConfig): void {
+  public registerProvider(provider: ElectronApiProvider, config: ModelConfig): void {
     this.providerRegistry[provider] = config;
     // Update default config to include new provider
     this.defaultConfig.apiKeys[provider] = "";

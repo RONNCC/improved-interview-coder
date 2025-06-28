@@ -3,6 +3,7 @@ import { defineConfig } from "vite"
 import electron from "vite-plugin-electron"
 import react from "@vitejs/plugin-react"
 import path from "path"
+import pkg from "./package.json"
 
 export default defineConfig({
   plugins: [
@@ -17,7 +18,7 @@ export default defineConfig({
             sourcemap: true,
             minify: false,
             rollupOptions: {
-              external: ["electron"]
+              external: ["electron", ...Object.keys(pkg.dependencies), ...Object.keys(pkg.devDependencies)]
             }
           }
         }
@@ -30,7 +31,7 @@ export default defineConfig({
             outDir: "dist-electron",
             sourcemap: true,
             rollupOptions: {
-              external: ["electron"]
+              external: ["electron", ...Object.keys(pkg.dependencies), ...Object.keys(pkg.devDependencies)]
             }
           }
         }
