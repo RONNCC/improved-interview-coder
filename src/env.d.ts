@@ -59,6 +59,10 @@ interface ElectronAPI {
   installUpdate: () => void
   onUpdateAvailable: (callback: (info: any) => void) => () => void
   onUpdateDownloaded: (callback: (info: any) => void) => () => void
+  // Chat API
+  sendChatMessage: (
+    messages: Array<{ role: string; content: string }>
+  ) => Promise<{ role: string; content: string } | { error: string }>
 }
 
 interface Window {

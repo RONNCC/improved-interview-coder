@@ -3,6 +3,7 @@
 import { ipcMain, shell } from "electron"
 import { IIpcHandlerDeps } from "./main"
 import { configHelper } from "./ConfigHelper"
+import OpenAI from "openai"
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   console.log("Initializing IPC handlers")
@@ -308,6 +309,39 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     } catch (error) {
       console.error("Error deleting last screenshot:", error)
       return { success: false, error: "Failed to delete last screenshot" }
+    }
+  })
+
+  // Chat completion handler
+  ipcMain.handle("chat-complete", async (_event, messages: Array<{ role: string; content: string }>) => {
+    try {
+      const config = configHelper.loadConfig()
+      const provider = config.apiProvider || "openai"
+
+      // Currently only OpenAI is supported for chat
+      if (provider !== "openai") {
+        return { error: `Chat provider '${provider}' not supported yet.` }
+      }
+
+      const apiKey = (config as any).apiKeys?.[provider] || ""
+      const openai = new OpenAI({ apiKey })
+
+      // Ensure at least one system message for better responses
+      const conversation = messages.length && messages[0].role === "system"
+        ? messages
+        : [{ role: "system", content: "You are a helpful AI assistant." }, ...messages]
+
+      const completion = await openai.chat.completions.create({
+        model: config.solutionModel || "gpt-4o", // fallback model
+        messages: conversation as any,
+        max_tokens: 1024
+      })
+
+      const reply = completion.choices?.[0]?.message?.content || "(no response)"
+      return { role: "assistant", content: reply }
+    } catch (error: any) {
+      console.error("Chat completion error:", error)
+      return { error: error?.message || "Unknown error" }
     }
   })
 }

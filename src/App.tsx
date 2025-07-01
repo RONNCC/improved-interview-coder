@@ -1,5 +1,6 @@
 import SubscribedApp from "./_pages/SubscribedApp"
 import { UpdateNotification } from "./components/UpdateNotification"
+import Chat from "./_pages/Chat"
 import {
   QueryClient,
   QueryClientProvider
@@ -33,6 +34,11 @@ const queryClient = new QueryClient({
 
 // Root component that provides the QueryClient
 function App() {
+  // If we are in chat mode (new window), render chat interface and early return
+  const isChatMode = window.location.hash === "#chat"
+  if (isChatMode) {
+    return <Chat />
+  }
   const [toastState, setToastState] = useState({
     open: false,
     title: "",

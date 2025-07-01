@@ -1,4 +1,4 @@
-import { globalShortcut, app } from "electron"
+import { globalShortcut, app, BrowserWindow } from "electron"
 import { IShortcutsHelperDeps } from "./main"
 import { configHelper } from "./ConfigHelper"
 
@@ -126,30 +126,41 @@ export class ShortcutsHelper {
       this.adjustOpacity(0.1)
     })
     
-    // Zoom controls
+    // Helper to get the focused window (main or chat)
+    function getTargetWindow(): BrowserWindow | null {
+      const focused = BrowserWindow.getFocusedWindow()
+      // If chat window is focused, return it; else main window
+      if (focused) return focused
+      return this.deps.getMainWindow()
+    }
+
+    // Helper to sync zoom between both windows
+    function syncZoomLevels(zoom: number) {
+      const mainWindow = this.deps.getMainWindow()
+      const chatWindow = (global as any).state?.chatWindow || null
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomLevel(zoom)
+      if (chatWindow && !chatWindow.isDestroyed()) chatWindow.webContents.setZoomLevel(zoom)
+    }
+
     globalShortcut.register("CommandOrControl+-", () => {
-      console.log("Command/Ctrl + - pressed. Zooming out.")
-      const mainWindow = this.deps.getMainWindow()
-      if (mainWindow) {
-        const currentZoom = mainWindow.webContents.getZoomLevel()
-        mainWindow.webContents.setZoomLevel(currentZoom - 0.5)
+      const win = getTargetWindow.call(this)
+      if (win) {
+        const currentZoom = win.webContents.getZoomLevel()
+        const newZoom = currentZoom - 0.5
+        syncZoomLevels.call(this, newZoom)
       }
     })
-    
+
     globalShortcut.register("CommandOrControl+0", () => {
-      console.log("Command/Ctrl + 0 pressed. Resetting zoom.")
-      const mainWindow = this.deps.getMainWindow()
-      if (mainWindow) {
-        mainWindow.webContents.setZoomLevel(0)
-      }
+      syncZoomLevels.call(this, 0)
     })
-    
+
     globalShortcut.register("CommandOrControl+=", () => {
-      console.log("Command/Ctrl + = pressed. Zooming in.")
-      const mainWindow = this.deps.getMainWindow()
-      if (mainWindow) {
-        const currentZoom = mainWindow.webContents.getZoomLevel()
-        mainWindow.webContents.setZoomLevel(currentZoom + 0.5)
+      const win = getTargetWindow.call(this)
+      if (win) {
+        const currentZoom = win.webContents.getZoomLevel()
+        const newZoom = currentZoom + 0.5
+        syncZoomLevels.call(this, newZoom)
       }
     })
     

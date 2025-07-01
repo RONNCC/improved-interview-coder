@@ -7,7 +7,7 @@ import { ScreenshotHelper } from "./ScreenshotHelper"
 import { ShortcutsHelper } from "./shortcuts"
 import { initAutoUpdater } from "./autoUpdater"
 import { configHelper } from "./ConfigHelper"
-import * as dotenv from "dotenv"
+import dotenv = require("dotenv")
 
 // Constants
 const isDev = process.env.NODE_ENV === "development"
@@ -24,6 +24,8 @@ const state = {
   step: 0,
   currentX: 0,
   currentY: 0,
+  // Chat window
+  chatWindow: null as BrowserWindow | null,
 
   // Application helpers
   screenshotHelper: null as ScreenshotHelper | null,
@@ -39,7 +41,6 @@ const state = {
   PROCESSING_EVENTS: {
     UNAUTHORIZED: "processing-unauthorized",
     NO_SCREENSHOTS: "processing-no-screenshots",
-    OUT_OF_CREDITS: "out-of-credits",
     API_KEY_INVALID: "api-key-invalid",
     INITIAL_START: "initial-start",
     PROBLEM_EXTRACTED: "problem-extracted",
@@ -49,7 +50,9 @@ const state = {
     DEBUG_SUCCESS: "debug-success",
     DEBUG_ERROR: "debug-error"
   } as const
-}
+};
+
+(global as any).state = state;
 
 // Add interfaces for helper classes
 export interface IProcessingHelperDeps {
@@ -240,6 +243,52 @@ async function createWindow(): Promise<void> {
 
   state.mainWindow = new BrowserWindow(windowSettings)
 
+  // Add more detailed logging for window events
+  state.mainWindow.webContents.on("did-finish-load", () => {
+    console.log("Window finished loading")
+  })
+  state.mainWindow.webContents.on(
+    "did-fail-load",
+    async (event, errorCode, errorDescription) => {
+      console.error("Window failed to load:", errorCode, errorDescription)
+      if (isDev) {
+        // In development, retry loading after a short delay
+        console.log("Retrying to load development server...")
+        setTimeout(() => {
+          state.mainWindow?.loadURL("http://localhost:54321").catch((error) => {
+            console.error("Failed to load dev server on retry:", error)
+          })
+        }, 1000)
+      }
+    }
+  )
+
+  if (isDev) {
+    // In development, load from the dev server
+    console.log("Loading from development server: http://localhost:54321")
+    state.mainWindow.loadURL("http://localhost:54321").catch((error) => {
+      console.error("Failed to load dev server, falling back to local file:", error)
+      // Fallback to local file if dev server is not available
+      const indexPath = path.join(__dirname, "../dist/index.html")
+      console.log("Falling back to:", indexPath)
+      if (fs.existsSync(indexPath)) {
+        state.mainWindow.loadFile(indexPath)
+      } else {
+        console.error("Could not find index.html in dist folder")
+      }
+    })
+  } else {
+    // In production, load from the built files
+    const indexPath = path.join(__dirname, "../dist/index.html")
+    console.log("Loading production build:", indexPath)
+    
+    if (fs.existsSync(indexPath)) {
+      state.mainWindow.loadFile(indexPath)
+    } else {
+      console.error("Could not find index.html in dist folder")
+    }
+  }
+
   // Configure window behavior
   state.mainWindow.webContents.setZoomFactor(1)
   if (isDev) {
@@ -287,52 +336,6 @@ async function createWindow(): Promise<void> {
   // Prevent the window from being captured by screen recording
   state.mainWindow.webContents.setBackgroundThrottling(false)
   state.mainWindow.webContents.setFrameRate(60)
-
-  // Add more detailed logging for window events
-  state.mainWindow.webContents.on("did-finish-load", () => {
-    console.log("Window finished loading")
-  })
-  state.mainWindow.webContents.on(
-    "did-fail-load",
-    async (event, errorCode, errorDescription) => {
-      console.error("Window failed to load:", errorCode, errorDescription)
-      if (isDev) {
-        // In development, retry loading after a short delay
-        console.log("Retrying to load development server...")
-        setTimeout(() => {
-          state.mainWindow?.loadURL("http://localhost:54321").catch((error) => {
-            console.error("Failed to load dev server on retry:", error)
-          })
-        }, 1000)
-      }
-    }
-  )
-
-  if (isDev) {
-    // In development, load from the dev server
-    console.log("Loading from development server: http://localhost:54321")
-    state.mainWindow.loadURL("http://localhost:54321").catch((error) => {
-      console.error("Failed to load dev server, falling back to local file:", error)
-      // Fallback to local file if dev server is not available
-      const indexPath = path.join(__dirname, "../dist/index.html")
-      console.log("Falling back to:", indexPath)
-      if (fs.existsSync(indexPath)) {
-        state.mainWindow.loadFile(indexPath)
-      } else {
-        console.error("Could not find index.html in dist folder")
-      }
-    })
-  } else {
-    // In production, load from the built files
-    const indexPath = path.join(__dirname, "../dist/index.html")
-    console.log("Loading production build:", indexPath)
-    
-    if (fs.existsSync(indexPath)) {
-      state.mainWindow.loadFile(indexPath)
-    } else {
-      console.error("Could not find index.html in dist folder")
-    }
-  }
 
   // Set up window listeners
   state.mainWindow.on("move", handleWindowMove)
@@ -390,26 +393,35 @@ function handleWindowClosed(): void {
 // Window visibility functions
 function hideMainWindow(): void {
   if (!state.mainWindow?.isDestroyed()) {
-    state.mainWindow.hide(); // Use hide() for more reliable visibility toggling
+    const bounds = state.mainWindow.getBounds();
+    state.windowPosition = { x: bounds.x, y: bounds.y };
+    state.windowSize = { width: bounds.width, height: bounds.height };
+    state.mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    state.mainWindow.setOpacity(0);
     state.isWindowVisible = false;
-    console.log('Window hidden with .hide()');
+    console.log('Window hidden, opacity set to 0');
   }
 }
 
 function showMainWindow(): void {
   if (!state.mainWindow?.isDestroyed()) {
-    // Ensure window properties are set correctly on show
+    if (state.windowPosition && state.windowSize) {
+      state.mainWindow.setBounds({
+        ...state.windowPosition,
+        ...state.windowSize
+      });
+    }
+    state.mainWindow.setIgnoreMouseEvents(false);
     state.mainWindow.setAlwaysOnTop(true, "screen-saver", 1);
     state.mainWindow.setVisibleOnAllWorkspaces(true, {
       visibleOnFullScreen: true
     });
     state.mainWindow.setContentProtection(true);
-
-    const savedOpacity = configHelper.getOpacity();
-    state.mainWindow.setOpacity(savedOpacity); // Restore opacity before showing
-    state.mainWindow.showInactive(); // Use showInactive to avoid stealing focus
+    state.mainWindow.setOpacity(0); // Set opacity to 0 before showing
+    state.mainWindow.showInactive(); // Use showInactive instead of show+focus
+    state.mainWindow.setOpacity(1); // Then set opacity to 1 after showing
     state.isWindowVisible = true;
-    console.log(`Window shown with .showInactive(), opacity set to ${savedOpacity}`);
+    console.log('Window shown with showInactive(), opacity set to 1');
   }
 }
 
@@ -560,6 +572,16 @@ async function initializeApp() {
       isDev ? "development" : "production",
       "mode"
     )
+
+    // After initializing shortcuts in initializeApp, register global shortcut for chat window
+    globalShortcut.register("CommandOrControl+Shift+C", () => {
+      toggleChatWindow()
+    })
+
+    // Ensure chat shortcut is unregistered on quit
+    app.on("will-quit", () => {
+      globalShortcut.unregister("CommandOrControl+Shift+C")
+    })
   } catch (error) {
     console.error("Failed to initialize application:", error)
     app.quit()
@@ -676,6 +698,86 @@ function getHasDebugged(): boolean {
   return state.hasDebugged
 }
 
+function createChatWindow(): void {
+  if (state.chatWindow && !state.chatWindow.isDestroyed()) {
+    state.chatWindow.focus()
+    return
+  }
+
+  const windowSettings: BrowserWindowConstructorOptions = {
+    width: 500,
+    height: 700,
+    minWidth: 400,
+    minHeight: 500,
+    alwaysOnTop: true,
+    frame: false,
+    transparent: true,
+    titleBarStyle: "hidden",
+    skipTaskbar: true,
+    hasShadow: false,
+    type: "panel",
+    movable: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: isDev
+        ? path.join(__dirname, "../dist-electron/preload.js")
+        : path.join(__dirname, "preload.js"),
+      scrollBounce: true
+    }
+  }
+
+  state.chatWindow = new BrowserWindow(windowSettings)
+
+  // Set chat window zoom to match main window
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+    const mainZoom = state.mainWindow.webContents.getZoomLevel()
+    state.chatWindow.webContents.setZoomLevel(mainZoom)
+  }
+
+  // Load appropriate URL/file with #chat hash
+  if (isDev) {
+    state.chatWindow.loadURL("http://localhost:54321/#chat")
+  } else {
+    const indexPath = path.join(__dirname, "../dist/index.html")
+    state.chatWindow.loadFile(indexPath, { hash: "chat" })
+  }
+
+  if (isDev) {
+    state.chatWindow.webContents.openDevTools({ mode: "detach" })
+  }
+
+  state.chatWindow.on("closed", () => {
+    state.chatWindow = null
+  })
+
+  // Apply security & visual parity options
+  state.chatWindow.setContentProtection(true)
+  state.chatWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  state.chatWindow.setHasShadow(false)
+  state.chatWindow.setAlwaysOnTop(true, "screen-saver", 1)
+
+  const savedOpacity = configHelper.getOpacity()
+  state.chatWindow.setOpacity(savedOpacity)
+
+  if (process.platform === "darwin") {
+    state.chatWindow.setWindowButtonVisibility(false)
+  }
+}
+
+function toggleChatWindow(): void {
+  if (state.chatWindow && !state.chatWindow.isDestroyed()) {
+    if (state.chatWindow.isVisible()) {
+      state.chatWindow.hide()
+    } else {
+      state.chatWindow.show()
+      state.chatWindow.focus()
+    }
+  } else {
+    createChatWindow()
+  }
+}
+
 // Export state and functions for other modules
 export {
   state,
@@ -699,7 +801,9 @@ export {
   getImagePreview,
   deleteScreenshot,
   setHasDebugged,
-  getHasDebugged
+  getHasDebugged,
+  createChatWindow,
+  toggleChatWindow
 }
 
 app.whenReady().then(initializeApp)

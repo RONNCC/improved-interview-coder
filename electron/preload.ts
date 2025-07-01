@@ -6,7 +6,6 @@ export const PROCESSING_EVENTS = {
   //global states
   UNAUTHORIZED: "procesing-unauthorized",
   NO_SCREENSHOTS: "processing-no-screenshots",
-  OUT_OF_CREDITS: "out-of-credits",
   API_KEY_INVALID: "api-key-invalid",
 
   //states for generating the initial solution
@@ -110,13 +109,6 @@ const electronAPI = {
     ipcRenderer.on(PROCESSING_EVENTS.NO_SCREENSHOTS, subscription)
     return () => {
       ipcRenderer.removeListener(PROCESSING_EVENTS.NO_SCREENSHOTS, subscription)
-    }
-  },
-  onOutOfCredits: (callback: () => void) => {
-    const subscription = () => callback()
-    ipcRenderer.on(PROCESSING_EVENTS.OUT_OF_CREDITS, subscription)
-    return () => {
-      ipcRenderer.removeListener(PROCESSING_EVENTS.OUT_OF_CREDITS, subscription)
     }
   },
   onProblemExtracted: (callback: (data: any) => void) => {
@@ -243,7 +235,11 @@ const electronAPI = {
     return () => {
       ipcRenderer.removeListener("shortcut-process-screenshots", subscription)
     }
-  }
+  },
+
+  // Chat API
+  sendChatMessage: (messages: Array<{ role: string; content: string }>) =>
+    ipcRenderer.invoke("chat-complete", messages)
 }
 
 // Before exposing the API

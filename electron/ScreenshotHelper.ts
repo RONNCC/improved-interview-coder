@@ -6,8 +6,8 @@ import { app } from "electron"
 import { v4 as uuidv4 } from "uuid"
 import { execFile } from "child_process"
 import { promisify } from "util"
-import screenshot from "screenshot-desktop"
-import sharp from "sharp"
+import screenshot = require("screenshot-desktop")
+import sharp = require("sharp")
 import { configHelper } from "./ConfigHelper"
 
 const execFileAsync = promisify(execFile)
