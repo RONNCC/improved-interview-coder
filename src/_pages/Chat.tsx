@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react"
 interface ChatMessage {
   role: "user" | "assistant"
   content: string
+  isImage?: boolean
 }
 
 const Chat: React.FC = () => {
@@ -57,6 +58,22 @@ const Chat: React.FC = () => {
 
   const handleClear = () => setMessages([])
 
+  // Handle paste event for images
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (e.clipboardData.types.includes('Files') || e.clipboardData.types.includes('image/png')) {
+      e.preventDefault()
+      try {
+        const result = await (window as any).electronAPI.getClipboardImage()
+        if (result.success && result.path) {
+          const imgMsg: ChatMessage = { role: 'user', content: result.path, isImage: true }
+          setMessages(prev => [...prev, imgMsg])
+        }
+      } catch (error) {
+        console.error('Failed to paste image:', error)
+      }
+    }
+  }
+
   return (
     <div
       className="flex flex-col h-screen p-4 bg-black/60 backdrop-blur-md text-white/90 relative"
@@ -79,14 +96,20 @@ const Chat: React.FC = () => {
         className="flex-1 overflow-y-auto space-y-4 pr-2"
       >
         {messages.map((msg, idx) => (
-          <div key={idx} className={msg.role === "user" ? "text-right" : "text-left"}>
-            <span
-              className={`inline-block px-3 py-2 rounded-lg max-w-[80%] whitespace-pre-wrap ${
-                "bg-white/10 text-white/90"
-              }`}
-            >
-              {msg.content}
-            </span>
+          <div key={idx} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
+            {msg.isImage ? (
+              <img
+                src={`file://${msg.content}`}
+                alt="pasted"
+                className="inline-block max-w-[80%] rounded-lg border border-white/10"
+              />
+            ) : (
+              <span
+                className={`inline-block px-3 py-2 rounded-lg max-w-[80%] whitespace-pre-wrap bg-white/10 text-white/90`}
+              >
+                {msg.content}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -97,6 +120,7 @@ const Chat: React.FC = () => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         />
       </div>

@@ -208,4 +208,45 @@ Your solution should be efficient, well-commented, and handle edge cases.`;
       this.handleError(error);
     }
   }
+
+  /**
+   * General chat completion that supports images pasted by the user (as file paths on disk).
+   */
+  async chatComplete(messages: Array<{ role: string; content: string; isImage?: boolean }>): Promise<{ role: string; content: string }> {
+    // Transform messages: embed images as data URLs that OpenAI understands
+    const transformed = messages.map((m) => {
+      if (m.isImage) {
+        try {
+          const buffer = require("fs").readFileSync(m.content)
+          const base64 = buffer.toString("base64")
+          return {
+            role: m.role,
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: `data:image/png;base64,${base64}` }
+              }
+            ]
+          }
+        } catch (err) {
+          console.error("Failed to embed image", err)
+          return { role: m.role, content: `Image: ${m.content}` }
+        }
+      }
+      return { role: m.role, content: m.content }
+    })
+
+    // Ensure a system message exists
+    const conversation = transformed.length && transformed[0].role === "system"
+      ? transformed
+      : [{ role: "system", content: "You are a helpful AI assistant." }, ...transformed]
+
+    const completion = await this.client.chat.completions.create({
+      model: this.config.solutionModel || "gpt-4o",
+      messages: conversation as any
+    } as any)
+
+    const reply = completion.choices?.[0]?.message?.content || ""
+    return { role: "assistant", content: reply }
+  }
 }

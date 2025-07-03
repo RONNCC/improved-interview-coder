@@ -11,6 +11,8 @@ echo "- Move Window: Cmd+Arrows (Left/Right/Up/Down)"
 echo "- Adjust Opacity: Cmd+[ (decrease) / Cmd+] (increase)"
 echo "- Reset View: Cmd+R"
 echo "- Quit App: Cmd+Q"
+echo "- Center Window: Cmd+/"
+echo "- Open Chat Window: Cmd+Shift+C"
 echo
 echo "When you press Cmd+B, the window will toggle between visible and invisible."
 echo "If movement shortcuts aren't working, try making the window visible first with Cmd+B."

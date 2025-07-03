@@ -48,4 +48,9 @@ export interface IAiProvider {
     signal?: AbortSignal,
     additionalText?: string
   ): Promise<DebugResult>;
+
+  /** Chat completion for general conversation (optional) */
+  chatComplete?(
+    messages: Array<{ role: string; content: string; isImage?: boolean }>
+  ): Promise<{ role: string; content: string }>
 }

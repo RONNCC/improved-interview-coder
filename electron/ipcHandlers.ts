@@ -1,9 +1,11 @@
 // ipcHandlers.ts
 
-import { ipcMain, shell } from "electron"
+import { ipcMain, shell, clipboard, nativeImage, app } from "electron"
 import { IIpcHandlerDeps } from "./main"
 import { configHelper } from "./ConfigHelper"
-import OpenAI from "openai"
+import path from "path"
+import fs from "fs"
+import { createAiProvider } from "./ai-providers/AiProviderFactory"
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   console.log("Initializing IPC handlers")
@@ -323,36 +325,44 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     }
   })
 
-  // Chat completion handler
-  ipcMain.handle("chat-complete", async (_event, messages: Array<{ role: string; content: string }>) => {
+  // Chat completion handler (delegates to AI provider)
+  ipcMain.handle("chat-complete", async (_event, messages: Array<{ role: string; content: string; isImage?: boolean }>) => {
     try {
       const config = configHelper.loadConfig()
-      const provider = config.apiProvider || "openai"
+      const provider = createAiProvider(config)
 
-      // Currently only OpenAI is supported for chat
-      if (provider !== "openai") {
-        return { error: `Chat provider '${provider}' not supported yet.` }
+      if (!provider || !provider.chatComplete) {
+        return { error: `Chat provider '${config.apiProvider}' does not support chat completion.` }
       }
 
-      const apiKey = (config as any).apiKeys?.[provider] || ""
-      const openai = new OpenAI({ apiKey })
-
-      // Ensure at least one system message for better responses
-      const conversation = messages.length && messages[0].role === "system"
-        ? messages
-        : [{ role: "system", content: "You are a helpful AI assistant." }, ...messages]
-
-      const completion = await openai.chat.completions.create({
-        model: config.solutionModel || "gpt-4o", // fallback model
-        messages: conversation as any,
-        max_tokens: 1024
-      })
-
-      const reply = completion.choices?.[0]?.message?.content || "(no response)"
-      return { role: "assistant", content: reply }
+      const assistantMsg = await provider.chatComplete(messages)
+      return assistantMsg
     } catch (error: any) {
       console.error("Chat completion error:", error)
       return { error: error?.message || "Unknown error" }
+    }
+  })
+
+  // Clipboard image handler
+  ipcMain.handle("clipboard-get-image", async () => {
+    try {
+      const image = clipboard.readImage()
+      if (image.isEmpty()) {
+        return { success: false, error: "No image in clipboard" }
+      }
+
+      const pngBuffer = image.toPNG()
+      const tempDir = path.join(app.getPath("temp"), "ninja-coder-screenshots")
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+      }
+      const filename = `clip_${Date.now()}.png`
+      const filepath = path.join(tempDir, filename)
+      fs.writeFileSync(filepath, pngBuffer)
+      return { success: true, path: filepath }
+    } catch (error) {
+      console.error("Error retrieving clipboard image:", error)
+      return { success: false, error: "Failed to retrieve image" }
     }
   })
 }

@@ -149,6 +149,7 @@ const electronAPI = {
   triggerMoveUp: () => ipcRenderer.invoke("trigger-move-up"),
   triggerMoveDown: () => ipcRenderer.invoke("trigger-move-down"),
   triggerCenterWindow: () => ipcRenderer.invoke("trigger-center-window"),
+  getClipboardImage: () => ipcRenderer.invoke("clipboard-get-image"),
   onSubscriptionUpdated: (callback: () => void) => {
     const subscription = () => callback()
     ipcRenderer.on("subscription-updated", subscription)

@@ -66,6 +66,8 @@ The application uses unidentifiable global keyboard shortcuts that won't be dete
 
 - Toggle Window Visibility: [Control or Cmd + B]
 - Move Window: [Control or Cmd + Arrow keys]
+- Center Window: [Control or Cmd + /]
+- Open Chat Window: [Control or Cmd + Shift + C]
 - Take Screenshot: [Control or Cmd + H]
 - Delete Last Screenshot: [Control or Cmd + L]
 - Process Screenshots: [Control or Cmd + Enter]

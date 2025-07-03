@@ -54,6 +54,7 @@ interface ElectronAPI {
   triggerMoveUp: () => Promise<{ success: boolean; error?: string }>
   triggerMoveDown: () => Promise<{ success: boolean; error?: string }>
   triggerCenterWindow: () => Promise<{ success: boolean; error?: string }>
+  getClipboardImage: () => Promise<{ success: boolean; path?: string; error?: string }>
   onSubscriptionUpdated: (callback: () => void) => () => void
   onSubscriptionPortalClosed: (callback: () => void) => () => void
   // Add update-related methods
