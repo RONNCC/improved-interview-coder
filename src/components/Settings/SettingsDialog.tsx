@@ -434,7 +434,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 <div className="text-white/90 font-mono">Ctrl+H / Cmd+H</div>
                 
                 <div className="text-white/70">Process Screenshots</div>
-                <div className="text-white/90 font-mono">Ctrl+Enter / Cmd+Enter</div>
+                <div className="text-white/90 font-mono">Ctrl+Shift+Enter / Cmd+Shift+Enter</div>
                 
                 <div className="text-white/70">Delete Last Screenshot</div>
                 <div className="text-white/90 font-mono">Ctrl+L / Cmd+L</div>
@@ -447,6 +447,9 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 
                 <div className="text-white/70">Move Window</div>
                 <div className="text-white/90 font-mono">Ctrl+Arrow Keys</div>
+                
+                <div className="text-white/70">Center Window</div>
+                <div className="text-white/90 font-mono">Ctrl+/ / Cmd+/</div>
                 
                 <div className="text-white/70">Decrease Opacity</div>
                 <div className="text-white/90 font-mono">Ctrl+[ / Cmd+[</div>

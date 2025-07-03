@@ -94,7 +94,11 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
       
       // Clear the API key in the configuration
       await window.electronAPI.updateConfig({
-        apiKey: '',
+        apiKeys: {
+          openai: '',
+          gemini: '',
+          anthropic: ''
+        },
       });
       
       showToast('Success', 'Logged out successfully', 'success');
@@ -198,6 +202,9 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                   <div className="flex gap-1 ml-2">
                     <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
                       {COMMAND_KEY}
+                    </button>
+                    <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
+                      ⇧
                     </button>
                     <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
                       ↵
@@ -379,6 +386,9 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                               {COMMAND_KEY}
                             </span>
                             <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                              ⇧
+                            </span>
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
                               ↵
                             </span>
                           </div>
@@ -438,6 +448,41 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                           {screenshotCount > 0
                             ? "Remove the most recently taken screenshot."
                             : "No screenshots to delete."}
+                        </p>
+                      </div>
+
+                      {/* Center Window Command */}
+                      <div
+                        className="cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors"
+                        onClick={async () => {
+                          try {
+                            const result = await window.electronAPI.triggerCenterWindow()
+                            if (!result.success) {
+                              console.error("Failed to center window:", result.error)
+                              showToast("Error", result.error || "Failed to center window", "error")
+                            }
+                          } catch (error) {
+                            console.error("Error centering window:", error)
+                            showToast("Error", "Failed to center window", "error")
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="truncate">Center Window</span>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                              {COMMAND_KEY}
+                            </span>
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                              ⇧
+                            </span>
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                              ↑
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-white/70 truncate mt-1">
+                          Center this window on the primary display.
                         </p>
                       </div>
                     </div>

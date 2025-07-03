@@ -148,6 +148,7 @@ const electronAPI = {
   triggerMoveRight: () => ipcRenderer.invoke("trigger-move-right"),
   triggerMoveUp: () => ipcRenderer.invoke("trigger-move-up"),
   triggerMoveDown: () => ipcRenderer.invoke("trigger-move-down"),
+  triggerCenterWindow: () => ipcRenderer.invoke("trigger-center-window"),
   onSubscriptionUpdated: (callback: () => void) => {
     const subscription = () => callback()
     ipcRenderer.on("subscription-updated", subscription)

@@ -30,6 +30,7 @@ interface ElectronAPI {
   deleteScreenshot: (
     path: string
   ) => Promise<{ success: boolean; error?: string }>
+  deleteLastScreenshot: () => Promise<{ success: boolean; error?: string }>
   onScreenshotTaken: (
     callback: (data: { path: string; preview: string }) => void
   ) => () => void
@@ -52,6 +53,7 @@ interface ElectronAPI {
   triggerMoveRight: () => Promise<{ success: boolean; error?: string }>
   triggerMoveUp: () => Promise<{ success: boolean; error?: string }>
   triggerMoveDown: () => Promise<{ success: boolean; error?: string }>
+  triggerCenterWindow: () => Promise<{ success: boolean; error?: string }>
   onSubscriptionUpdated: (callback: () => void) => () => void
   onSubscriptionPortalClosed: (callback: () => void) => () => void
   // Add update-related methods

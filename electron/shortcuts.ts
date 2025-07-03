@@ -105,6 +105,12 @@ export class ShortcutsHelper {
       this.deps.moveWindowUp()
     })
 
+    // Center window on the primary display
+    globalShortcut.register("CommandOrControl+/", () => {
+      console.log("Command/Ctrl + / pressed. Centering window.")
+      this.deps.centerWindow()
+    })
+
     globalShortcut.register("CommandOrControl+B", () => {
       console.log("Command/Ctrl + B pressed. Toggling window visibility.")
       this.deps.toggleMainWindow()

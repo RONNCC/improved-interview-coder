@@ -88,6 +88,7 @@ export interface IShortcutsHelperDeps {
   moveWindowRight: () => void
   moveWindowUp: () => void
   moveWindowDown: () => void
+  centerWindow: () => void
 }
 
 export interface IIpcHandlerDeps {
@@ -110,6 +111,7 @@ export interface IIpcHandlerDeps {
   moveWindowRight: () => void
   moveWindowUp: () => void
   moveWindowDown: () => void
+  centerWindow: () => void
 }
 
 // Initialize helpers
@@ -153,7 +155,8 @@ function initializeHelpers() {
         )
       ),
     moveWindowUp: () => moveWindowVertical((y) => y - state.step),
-    moveWindowDown: () => moveWindowVertical((y) => y + state.step)
+    moveWindowDown: () => moveWindowVertical((y) => y + state.step),
+    centerWindow
   } as IShortcutsHelperDeps)
 }
 
@@ -560,7 +563,8 @@ async function initializeApp() {
           )
         ),
       moveWindowUp: () => moveWindowVertical((y) => y - state.step),
-      moveWindowDown: () => moveWindowVertical((y) => y + state.step)
+      moveWindowDown: () => moveWindowVertical((y) => y + state.step),
+      centerWindow
     })
     await createWindow()
     state.shortcutsHelper?.registerGlobalShortcuts()
@@ -775,6 +779,24 @@ function toggleChatWindow(): void {
     }
   } else {
     createChatWindow()
+  }
+}
+
+// Centers the main and chat windows on the primary display using Electron's built-in method.
+function centerWindow(): void {
+  if (!state.mainWindow) return
+
+  // Use the native helper for predictable results across platforms
+  state.mainWindow.center()
+
+  // Update cached coordinates after centering
+  const [newX, newY] = state.mainWindow.getPosition()
+  state.currentX = newX
+  state.currentY = newY
+
+  // Center chat window (if any) the same way
+  if (state.chatWindow && !state.chatWindow.isDestroyed()) {
+    state.chatWindow.center()
   }
 }
 

@@ -30,7 +30,11 @@ export function Header({ currentLanguage, setLanguage, onOpenSettings }: HeaderP
     try {
       // Update config with empty API key
       await window.electronAPI.updateConfig({
-        apiKey: '',
+        apiKeys: {
+          openai: '',
+          gemini: '',
+          anthropic: ''
+        },
       });
       
       showToast('Success', 'Logged out successfully', 'success');

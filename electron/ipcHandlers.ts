@@ -281,6 +281,17 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       return { error: "Failed to move window down" }
     }
   })
+
+  // Center window handler
+  ipcMain.handle("trigger-center-window", () => {
+    try {
+      deps.centerWindow()
+      return { success: true }
+    } catch (error) {
+      console.error("Error centering window:", error)
+      return { error: "Failed to center window" }
+    }
+  })
   
   // Delete last screenshot handler
   ipcMain.handle("delete-last-screenshot", async () => {
