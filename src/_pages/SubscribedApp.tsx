@@ -49,15 +49,27 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
   useEffect(() => {
     if (!containerRef.current) return
 
-    const updateDimensions = () => {
+    // Debounced dimension updater – fires at most once every 500 ms
+    const updateDimensionsImmediate = () => {
       if (!containerRef.current) return
       const height = containerRef.current.scrollHeight || 600
       const width = containerRef.current.scrollWidth || 800
       window.electronAPI?.updateContentDimensions({ width, height })
     }
 
+    // Simple debounce; avoids adding an external dependency
+    const debounce = (fn: () => void, delay: number) => {
+      let timer: ReturnType<typeof setTimeout> | null = null
+      return () => {
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(fn, delay)
+      }
+    }
+
+    const updateDimensions = debounce(updateDimensionsImmediate, 500)
+
     // Force initial dimension update immediately
-    updateDimensions()
+    updateDimensionsImmediate() // run once immediately for first paint
     
     // Set a fallback timer to ensure dimensions are set even if content isn't fully loaded
     const fallbackTimer = setTimeout(() => {
@@ -77,7 +89,7 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
     })
 
     // Do another update after a delay to catch any late-loading content
-    const delayedUpdate = setTimeout(updateDimensions, 1000)
+    const delayedUpdate = setTimeout(updateDimensionsImmediate, 1000)
 
     return () => {
       resizeObserver.disconnect()

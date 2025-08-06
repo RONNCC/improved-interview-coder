@@ -7,6 +7,13 @@ import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism"
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 
 import { Screenshot } from "../types"
+
+// Helper to tolerate both shapes returned by getScreenshots
+const extractPreviews = (raw: any): Array<{ path: string; preview: string }> => {
+  if (Array.isArray(raw)) return raw
+  if (Array.isArray(raw?.previews)) return raw.previews
+  return []
+}
 import SolutionCommands from "../components/Solutions/SolutionCommands"
 import Debug from "./Debug"
 import { useToast } from "../contexts/toast"
@@ -207,7 +214,7 @@ export interface SolutionsProps {
   setLanguage: (language: string) => void
   additionalText: string
   setAdditionalText: (text: string) => void
-  initialData: {
+  initialData?: {
     // ... existing code ...
   }
 }
@@ -247,9 +254,7 @@ const Solutions: React.FC<SolutionsProps> = ({
       try {
         const existing = await window.electronAPI.getScreenshots()
         console.log("Raw screenshot data:", existing)
-        const screenshots = (
-          Array.isArray(existing.previews) ? existing.previews : []
-        ).map((p) => ({
+        const screenshots = extractPreviews(existing).map((p) => ({
           id: p.path,
           path: p.path,
           preview: p.preview,
@@ -296,9 +301,7 @@ const Solutions: React.FC<SolutionsProps> = ({
       window.electronAPI.onScreenshotTaken(async () => {
         try {
           const existing = await window.electronAPI.getScreenshots()
-          const screenshots = (
-            Array.isArray(existing.previews) ? existing.previews : []
-          ).map((p) => ({
+          const screenshots = extractPreviews(existing).map((p) => ({
             id: p.path,
             path: p.path,
             preview: p.preview,
@@ -382,13 +385,12 @@ const Solutions: React.FC<SolutionsProps> = ({
         const fetchScreenshots = async () => {
           try {
             const existing = await window.electronAPI.getScreenshots()
-            const screenshots =
-              existing.previews?.map((p) => ({
-                id: p.path,
-                path: p.path,
-                preview: p.preview,
-                timestamp: Date.now()
-              })) || []
+            const screenshots = extractPreviews(existing).map((p) => ({
+              id: p.path,
+              path: p.path,
+              preview: p.preview,
+              timestamp: Date.now()
+            })) || []
             setExtraScreenshots(screenshots)
           } catch (error) {
             console.error("Error loading extra screenshots:", error)
@@ -480,9 +482,7 @@ const Solutions: React.FC<SolutionsProps> = ({
       if (response.success) {
         // Fetch and update screenshots after successful deletion
         const existing = await window.electronAPI.getScreenshots()
-        const screenshots = (
-          Array.isArray(existing.previews) ? existing.previews : []
-        ).map((p) => ({
+        const screenshots = extractPreviews(existing).map((p) => ({
           id: p.path,
           path: p.path,
           preview: p.preview,
