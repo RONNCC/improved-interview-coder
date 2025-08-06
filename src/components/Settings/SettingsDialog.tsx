@@ -51,6 +51,11 @@ const modelCategories: ModelCategory[] = [
         id: "gpt-4.1-mini",
         name: "gpt-4.1-mini",
         description: "Faster, more cost-effective option"
+      },
+      {
+        id: "gpt-4o-2024-11-20",
+        name: "gpt-4o-2024-11-20",
+        description: "Best overall performance for problem extraction"
       }
     ],
     geminiModels: [

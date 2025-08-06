@@ -79,6 +79,12 @@ function App() {
       description: string,
       variant: "neutral" | "success" | "error"
     ) => {
+      // Log every toast to console for easier debugging, regardless of variant.
+      const logMsg = `[TOAST] ${title}: ${description}`
+      console.log(logMsg)
+      console.error(logMsg)
+      console.trace("Toast triggered from:")
+
       setToastState({
         open: true,
         title,

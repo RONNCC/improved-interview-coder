@@ -144,8 +144,7 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
                   onClick={async () => {
                     if (extraScreenshots.length === 0) return; // Prevent click if disabled
                     try {
-                      const result =
-                        await window.electronAPI.triggerProcessScreenshots(additionalText);
+                      const result = await window.electronAPI.triggerProcessScreenshots(additionalText?.trim() || undefined);
                       if (!result.success) {
                         console.error(
                           "Failed to process screenshots:",
@@ -392,7 +391,7 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
                                 onClick={async () => {
                                   try {
                                     const result =
-                                      await window.electronAPI.triggerProcessScreenshots(additionalText)
+                                      await window.electronAPI.triggerProcessScreenshots(additionalText?.trim() || undefined)
                                     if (!result.success) {
                                       console.error(
                                         "Failed to process screenshots:",

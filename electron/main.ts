@@ -241,7 +241,12 @@ async function createWindow(): Promise<void> {
     paintWhenInitiallyHidden: true,
     titleBarStyle: "hidden",
     enableLargerThanScreen: true,
-    movable: true
+    movable: true,
+    // Open dev tools in dev mode
+    ...(isDev && {
+      width: 1200, // Wider for dev tools
+      height: 800
+    })
   }
 
   state.mainWindow = new BrowserWindow(windowSettings)

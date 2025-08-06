@@ -72,6 +72,7 @@ export class OpenAiProvider implements IAiProvider {
   }
 
   async generateSolution(problemInfo: ProblemInfo, language: string, signal?: AbortSignal, additionalText?: string): Promise<Solution> {
+    console.log("generateSolution received additionalText:", additionalText)
     try {
       var promptText = `
 Generate a detailed solution for the following coding problem:
@@ -109,56 +110,40 @@ If there's already existing code take that into account, such as for reuse.
 - For space complexity, explain any extra memory used besides the input (like data structures or recursion stack). If it's constant, say why. If it's more, mention what causes it.
 </complexity_notes>
 
-Your solution should be efficient, well-commented, and handle edge cases.`;
+Your solution should be efficient, well-commented, and handle edge cases.
+Use [section]: to denote sections, do not use ** since this is a coding interview and I have limited time to read, and also this is ASCII not markdown.
+
+`;
 
       if (additionalText?.trim()) {
         promptText += `\n\nADDITIONAL CONTEXT:\n${additionalText.trim()}\n\nPlease use this context in your solution.`;
       }
 
+      const SolutionSchema = z.object({
+        code: z.string(),
+        thoughts: z.array(z.string()),
+        time_complexity: z.string(),
+        space_complexity: z.string()
+      });
+
       const options = signal ? { signal } : {};
-      const solutionResponse = await this.client.chat.completions.create({
+      const solutionResponse = await this.client.beta.chat.completions.parse({
         model: this.config.solutionModel || "gpt-4o",
         messages: [
           { role: "system", content: "You are an expert coding interview assistant. Provide clear, optimal solutions with detailed explanations." },
           { role: "user", content: promptText }
         ],
+        response_format: zodResponseFormat(SolutionSchema, "solution_result"),
         max_completion_tokens: API_CONFIG.maxTokens.solution,
       }, options);
 
-      const responseContent = solutionResponse.choices[0].message.content || "";
-      
-      // All the response parsing logic is now encapsulated here.
-      const codeMatch = responseContent.match(/```(?:\w+)?\s*([\s\S]*?)```/);
-      const code = codeMatch ? codeMatch[1].trim() : responseContent;
-      
-      const thoughtsRegex = /(?:[0-9]+\.\s*)?(?:Your\s+)?(?:Thoughts|Key Insights|Reasoning|Approach|Your Thoughts)\b(?::)?([\s\S]*?)(?:Time complexity:|---|$)/i;
-      const thoughtsMatch = responseContent.match(thoughtsRegex);
-      let thoughts: string[] = [];
-      if (thoughtsMatch && thoughtsMatch[1]) {
-        const thoughtsBlock = thoughtsMatch[1].trim();
-        const bulletPointRegex = /^\s*(?:[-*•]|\d+\.)\s+(.*)/gm;
-        let match;
-        while ((match = bulletPointRegex.exec(thoughtsBlock)) !== null) {
-          thoughts.push(match[1].trim());
-        }
-        if (thoughts.length === 0 && thoughtsBlock) {
-          thoughts = thoughtsBlock.split('\n').map(line => line.trim()).filter(Boolean);
-        }
-      }
-
-      const timeComplexityPattern = /(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Time\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?|$)/i;
-      const timeMatch = responseContent.match(timeComplexityPattern);
-      const time_complexity = timeMatch?.[1]?.trim() || "Not found.";
-
-      const spaceComplexityPattern = /(?:^|\n)[ \t]*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?Space\s*Complexity(?:\*\*)?:?\s*([\s\S]*?)(?=(?:(?:^|\n)[ \t]*(?:#+\s*)?(?:(?:\d+\.\s*)?(?:\*\*)?[A-Z][A-Za-z0-9\s,'()-]{1,80}(?:\*\*)?:?)\s*(?:\n|$))|$)/i;
-      const spaceMatch = responseContent.match(spaceComplexityPattern);
-      const space_complexity = spaceMatch?.[1]?.trim() || "Not found.";
+      const parsed = solutionResponse.choices[0].message.parsed;
 
       return {
-        code,
-        thoughts: thoughts.length > 0 ? thoughts : ["Solution approach based on efficiency and readability"],
-        time_complexity,
-        space_complexity,
+        code: parsed.code,
+        thoughts: parsed.thoughts,
+        time_complexity: parsed.time_complexity,
+        space_complexity: parsed.space_complexity,
       };
     } catch (error) {
       this.handleError(error);
@@ -166,9 +151,20 @@ Your solution should be efficient, well-commented, and handle edge cases.`;
   }
 
   async debugSolution(problemInfo: ProblemInfo, screenshots: { data: string; }[], language: string, signal?: AbortSignal, additionalText?: string): Promise<DebugResult> {
+    console.log("debugSolution received additionalText:", additionalText)
     try {
-      const systemDebugPrompt = `You are a coding interview assistant helping debug and improve solutions. Analyze the user's screenshots and text to provide detailed debugging help...`; // (prompt truncated for brevity)
-      const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help...${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}`: ""}`; // (prompt truncated for brevity)
+      const systemDebugPrompt = `You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
+
+Your response MUST include
+- issues identified (or state "None" if there are none): List each issue as a bullet point with a clear explanation
+-  Specific Improvements and Corrections: List specific code changes needed as bullet points
+- Optimizations:  List any performance optimizations if applicable
+-  Explanation of Changes Needed: Provide a clear explanation of why the changes are needed
+- Key Points: Summary bullet points of the most important takeaways
+
+Use [section]: to denote sections, do not use ** since this is a coding interview and I have limited time to read, and also this is ASCII not markdown.
+`;
+      const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language} and need help debugging the current code I have against the requirements. I need help...${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}`: ""}`;
 
       const messages: any = [
         { role: "system", content: systemDebugPrompt },
@@ -184,25 +180,31 @@ Your solution should be efficient, well-commented, and handle edge cases.`;
         }
       ];
 
+      const DebugSchema = z.object({
+        code: z.string(),
+        debug_analysis: z.string(),
+        thoughts: z.array(z.string()).optional(),
+        time_complexity: z.string().optional(),
+        space_complexity: z.string().optional()
+      });
+
       const options = signal ? { signal } : {};
-      const debugResponse = await this.client.chat.completions.create({
+      const debugResponse = await this.client.beta.chat.completions.parse({
         model: this.config.debuggingModel || "gpt-4o",
-        messages: messages,
+        messages,
+        response_format: zodResponseFormat(DebugSchema, "debug_result"),
         max_completion_tokens: API_CONFIG.maxTokens.debugging,
       }, options);
 
-      const debugContent = debugResponse.choices[0].message.content || "";
-      const extractedCode = (debugContent.match(/```(?:[a-zA-Z]+)?([\s\S]*?)```/)?.[1] || "// Debug mode - see analysis below").trim();
-      const thoughts = (debugContent.match(/(?:^|\n)[ ]*(?:[-*•]|\d+\.)[ ]+([^\n]+)/g) || [])
-        .map(point => point.replace(/^[ ]*(?:[-*•]|\d+\.)[ ]+/, '').trim())
-        .slice(0, 5);
+      const parsed = debugResponse.choices[0].message.parsed;
+      console.log("debug Response parsed", parsed);
 
       return {
-        code: extractedCode,
-        debug_analysis: debugContent,
-        thoughts: thoughts.length ? thoughts : ["Debug analysis based on your screenshots"],
-        time_complexity: "N/A - Debug mode",
-        space_complexity: "N/A - Debug mode"
+        code: parsed.code,
+        debug_analysis: parsed.debug_analysis,
+        thoughts: parsed.thoughts || [],
+        time_complexity: parsed.time_complexity || "N/A",
+        space_complexity: parsed.space_complexity || "N/A"
       };
     } catch (error) {
       this.handleError(error);

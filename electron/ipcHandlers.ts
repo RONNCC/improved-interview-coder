@@ -54,20 +54,6 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     return deps.getImagePreview(path)
   })
 
-  // Screenshot processing handlers
-  ipcMain.handle("process-screenshots", async () => {
-    // Check for API key before processing
-    if (!configHelper.hasApiKey()) {
-      const mainWindow = deps.getMainWindow();
-      if (mainWindow) {
-        mainWindow.webContents.send(deps.PROCESSING_EVENTS.API_KEY_INVALID);
-      }
-      return;
-    }
-    
-    await deps.processingHelper?.processScreenshots()
-  })
-
   // Window dimension handlers
   ipcMain.handle(
     "update-content-dimensions",

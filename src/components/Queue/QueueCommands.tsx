@@ -182,8 +182,7 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                 onClick={async () => {
 
                   try {
-                    const result =
-                      await window.electronAPI.triggerProcessScreenshots(additionalText)
+                    const result = await window.electronAPI.triggerProcessScreenshots(additionalText?.trim() || undefined)
                     if (!result.success) {
                       console.error(
                         "Failed to process screenshots:",
@@ -354,7 +353,7 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
 
                           try {
                             const result =
-                              await window.electronAPI.triggerProcessScreenshots(additionalText)
+                              await window.electronAPI.triggerProcessScreenshots(additionalText?.trim() || undefined)
                             if (!result.success) {
                               console.error(
                                 "Failed to process screenshots:",

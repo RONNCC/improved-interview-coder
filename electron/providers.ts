@@ -20,6 +20,7 @@ export const PROVIDER_BACKEND_CONFIGS: Record<ElectronApiProvider, ProviderBacke
     models: [
       "gpt-4.1",
       "o4-mini",
+      "chatgpt-4o-latest",
       "gpt-4o",
       "gpt-3.5-turbo",
       "o3",

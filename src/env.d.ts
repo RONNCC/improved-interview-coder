@@ -40,14 +40,16 @@ interface ElectronAPI {
   onDebugSuccess: (callback: (data: any) => void) => () => void
   onSolutionError: (callback: (error: string) => void) => () => void
   onProcessingNoScreenshots: (callback: () => void) => () => void
-  onProblemExtracted: (callback: (data: any) => void) => () => void
-  onSolutionSuccess: (callback: (data: any) => void) => () => void
-  onUnauthorized: (callback: () => void) => () => void
+  onProblemExtracted: (callback: (data: any) => void) => void
+  onSolutionSuccess: (callback: (data: any) => void) => void
+  onUnauthorized: (callback: () => void) => void
   onDebugError: (callback: (error: string) => void) => () => void
   openExternal: (url: string) => void
   toggleMainWindow: () => Promise<{ success: boolean; error?: string }>
   triggerScreenshot: () => Promise<{ success: boolean; error?: string }>
-  triggerProcessScreenshots: () => Promise<{ success: boolean; error?: string }>
+  triggerProcessScreenshots: (
+    additionalText?: string
+  ) => Promise<{ success: boolean; error?: string }>
   triggerReset: () => Promise<{ success: boolean; error?: string }>
   triggerMoveLeft: () => Promise<{ success: boolean; error?: string }>
   triggerMoveRight: () => Promise<{ success: boolean; error?: string }>

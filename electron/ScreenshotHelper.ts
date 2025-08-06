@@ -12,6 +12,15 @@ import { configHelper } from "./ConfigHelper"
 
 const execFileAsync = promisify(execFile)
 
+// Hard-coded crop values in pixels
+// Adjust here whenever you want to change the crop margins
+const CROP_SCREENSHOT_PARAMS = {
+  top: 250,
+  bottom: 100,
+  left: 50,
+  right: 50
+} as const
+
 export class ScreenshotHelper {
   private screenshotQueue: string[] = []
   private extraScreenshotQueue: string[] = []
@@ -171,6 +180,35 @@ export class ScreenshotHelper {
     }
   }
 
+  // Generic crop from any side using Sharp
+  private async cropBuffer(buffer: Buffer): Promise<Buffer> {
+    const crop = CROP_SCREENSHOT_PARAMS
+    // Fast path: no cropping configured
+    if (!crop.top && !crop.bottom && !crop.left && !crop.right) {
+      return buffer
+    }
+
+    try {
+      const meta = await sharp(buffer).metadata()
+      if (!meta.width || !meta.height) return buffer
+
+      const width = meta.width - crop.left - crop.right
+      const height = meta.height - crop.top - crop.bottom
+      if (width <= 0 || height <= 0) {
+        console.warn("Crop dimensions exceed image size; skipping crop")
+        return buffer
+      }
+
+      return await sharp(buffer)
+        .extract({ left: crop.left, top: crop.top, width, height })
+        .png()
+        .toBuffer()
+    } catch (err) {
+      console.error("Failed to crop screenshot, returning original:", err)
+      return buffer
+    }
+  }
+
   /**
    * Windows-specific screenshot capture with multiple fallback mechanisms
    */
@@ -274,7 +312,10 @@ export class ScreenshotHelper {
     let screenshotPath = ""
     try {
       // Get screenshot buffer using cross-platform method
-      const screenshotBuffer = await this.captureScreenshot();
+      let screenshotBuffer = await this.captureScreenshot();
+
+      // Apply hard-coded cropping defined in CROP_SCREENSHOT_PARAMS
+      screenshotBuffer = await this.cropBuffer(screenshotBuffer);
       
       if (!screenshotBuffer || screenshotBuffer.length === 0) {
         throw new Error("Screenshot capture returned empty buffer");
