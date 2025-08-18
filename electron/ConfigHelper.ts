@@ -6,6 +6,14 @@ import { EventEmitter } from "events"
 import { OpenAI } from "openai"
 import { PROVIDER_BACKEND_CONFIGS, ElectronApiProvider } from './providers'
 
+export const API_CONFIG = {
+  maxTokens: {
+    extraction: 6000,
+    solution: 6000,
+    debugging: 8000
+  }
+} as const;
+
 export interface AppConfig {
   apiKeys: Record<ElectronApiProvider, string>;
   apiProvider: ElectronApiProvider;

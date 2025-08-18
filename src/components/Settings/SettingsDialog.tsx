@@ -43,13 +43,18 @@ const modelCategories: ModelCategory[] = [
         description: "Best overall performance for problem extraction"
       },
       {
+        id: "gpt-5",
+        name: "gpt-5",
+        description: "Prototype"
+      },
+      {
         id: "o4-mini",
         name: "o4-mini",
         description: "Faster, more cost-effective option"
       },
       {
-        id: "gpt-4.1-mini",
-        name: "gpt-4.1-mini",
+        id: "gpt-5-mini",
+        name: "gpt-5-mini",
         description: "Faster, more cost-effective option"
       },
       {
@@ -99,13 +104,18 @@ const modelCategories: ModelCategory[] = [
         description: "Strong overall performance for coding tasks"
       },
       {
+        id: "gpt-5",
+        name: "gpt-5",
+        description: "Prototype"
+      },
+      {
         id: "o4-mini",
         name: "o4-mini",
         description: "Faster, more cost-effective option"
       },
       {
-        id: "gpt-4.5-preview-2025-02-27",
-        name: "gpt-4.5-preview-2025-02-27",
+        id: "gpt-5-mini",
+        name: "gpt-5-mini",
         description: "Prototype"
       }
     ],
@@ -149,6 +159,11 @@ const modelCategories: ModelCategory[] = [
         id: "gpt-4.1",
         name: "gpt-4.1",
         description: "Best for analyzing code and error messages"
+      },
+      {
+        id: "gpt-5",
+        name: "gpt-5",
+        description: "Prototype"
       },
       {
         id: "o4-mini",

@@ -22,10 +22,13 @@ export const PROVIDER_BACKEND_CONFIGS: Record<ElectronApiProvider, ProviderBacke
       "o4-mini",
       "chatgpt-4o-latest",
       "gpt-4o",
+      "gpt-4o-2024-11-20",
       "gpt-3.5-turbo",
       "o3",
       "gpt-4.5-preview-2025-02-27",
-      "gpt-4.1-mini"
+      "gpt-4.1-mini",
+      "gpt-5-mini",
+      "gpt-5"
     ],
     defaultModel: "gpt-4o",
     keyPrefix: "sk-",

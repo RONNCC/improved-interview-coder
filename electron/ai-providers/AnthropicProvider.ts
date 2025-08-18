@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { IAiProvider, ProblemInfo, Solution, DebugResult, ApiKeyError } from "./IAiProvider";
-import { API_CONFIG } from "../ProcessingHelper";
+import { API_CONFIG } from "../ConfigHelper";
 import { AppConfig } from "../ConfigHelper";
 
 export class AnthropicProvider implements IAiProvider {
@@ -27,7 +27,7 @@ export class AnthropicProvider implements IAiProvider {
 
     async extractProblemInfo(screenshots: { data: string; }[], language: string, _signal?: AbortSignal): Promise<ProblemInfo> {
         try {
-            const anthropicPrompt = `Extract the coding problem details from these screenshots. Return in JSON format with these fields: problem_statement, constraints, example_input, example_output. Preferred coding language is ${language}.`;
+            const anthropicPrompt = `Extract the coding problem details from these screenshots. Return in JSON format with these fields: problem_statement, constraints, example_input, example_output, preexisting_code. If any starter or pre-existing code is visible in the screenshots, include it in preexisting_code. Preferred coding language is ${language}.`;
 
             const messages: any = [
                 {
@@ -81,6 +81,9 @@ ${problemInfo.example_input || "No example input provided."}
 
 EXAMPLE OUTPUT:
 ${problemInfo.example_output || "No example output provided."}
+
+PRE-EXISTING CODE:
+${problemInfo.preexisting_code || "No preexisting code provided."}
 
 LANGUAGE: ${language}
 
@@ -165,7 +168,7 @@ Your solution should be efficient, well-commented, and handle edge cases.`;
     async debugSolution(problemInfo: ProblemInfo, screenshots: { data: string; }[], language: string, _signal?: AbortSignal, additionalText?: string): Promise<DebugResult> {
         try {
             const systemDebugPrompt = `You are a coding interview assistant helping debug and improve solutions. Analyze the user's screenshots and text to provide detailed debugging help. Your response MUST follow this exact structure with these section headers (use ### for headers): ### Issues Identified - List each issue as a bullet point with clear explanation ### Specific Improvements and Corrections - List specific code changes needed as bullet points ### Optimizations - List any performance optimizations if applicable ### Explanation of Changes Needed Here provide a clear explanation of why the changes are needed ### Key Points - Summary bullet points of the most important takeaways If you include code examples, use proper markdown code blocks with language specification (e.g. \`\`\`java).`;
-            const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution. The attached screenshots show my current code, error messages, or test case failures.${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}` : ""}`;
+            const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution. The attached screenshots show my current code, error messages, or test case failures.${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}` : ""}${problemInfo.preexisting_code ? `\n\nPRE-EXISTING CODE:\n${problemInfo.preexisting_code}` : ""}`;
             
             const messages: any = [
                 {

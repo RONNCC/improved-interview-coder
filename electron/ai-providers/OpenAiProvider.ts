@@ -2,7 +2,7 @@ import { OpenAI } from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { IAiProvider, ProblemInfo, Solution, DebugResult, ApiKeyError } from "./IAiProvider";
-import { API_CONFIG } from "../ProcessingHelper";
+import { API_CONFIG } from "../ConfigHelper";
 import { AppConfig } from "../ConfigHelper";
 
 export class OpenAiProvider implements IAiProvider {
@@ -51,21 +51,36 @@ export class OpenAiProvider implements IAiProvider {
         constraints: z.string().optional(),
         example_input: z.string().optional(),
         example_output: z.string().optional(),
+        preexisting_code: z.string().optional()
       });
 
       const options = signal ? { signal } : {};
-      const extractionResponse = await this.client.beta.chat.completions.parse({
+      const extraction = await this.client.beta.chat.completions.parse({
         model: this.config.extractionModel || "gpt-4o",
         messages: messages,
-        response_format: zodResponseFormat(ProblemExtraction, "problem_extraction"),
+        response_format: zodResponseFormat(
+          z.object({
+            problem_statement: z.string(),
+            constraints: z.string().optional(),
+            example_input: z.string().optional(),
+            example_output: z.string().optional(),
+            preexisting_code: z.string().optional()
+          }),
+          "problem_info"
+        ),
         max_completion_tokens: API_CONFIG.maxTokens.extraction,
       }, options);
 
-      const problemInfo = extractionResponse.choices[0].message.parsed;
-      if (!problemInfo || !problemInfo.problem_statement) {
-        throw new Error("Failed to parse problem information from OpenAI response.");
+      const parsed = extraction.choices[0].message.parsed
+      // console.log("Problem info parsed", parsed)
+
+      return {
+        problem_statement: parsed.problem_statement,
+        constraints: parsed.constraints,
+        example_input: parsed.example_input,
+        example_output: parsed.example_output,
+        preexisting_code: parsed.preexisting_code
       }
-      return problemInfo as ProblemInfo;
     } catch (error) {
       this.handleError(error);
     }
@@ -86,8 +101,11 @@ ${problemInfo.constraints || "No specific constraints provided."}
 EXAMPLE INPUT:
 ${problemInfo.example_input || "No example input provided."}
 
-EXAMPLE OUTPUT:
-${problemInfo.example_output || "No example output provided."}
+  EXAMPLE OUTPUT:
+  ${problemInfo.example_output || "No example output provided."}
+
+  PRE-EXISTING CODE:
+  ${problemInfo.preexisting_code || "No preexisting code provided."}
 
 LANGUAGE: ${language}
 
@@ -164,7 +182,7 @@ Your response MUST include
 
 Use [section]: to denote sections, do not use ** since this is a coding interview and I have limited time to read, and also this is ASCII not markdown.
 `;
-      const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language} and need help debugging the current code I have against the requirements. I need help...${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}`: ""}`;
+      const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language} and need help debugging the current code I have against the requirements. I need help...${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}`: ""}${problemInfo.preexisting_code ? `\n\nPRE-EXISTING CODE:\n${problemInfo.preexisting_code}` : ""}`;
 
       const messages: any = [
         { role: "system", content: systemDebugPrompt },

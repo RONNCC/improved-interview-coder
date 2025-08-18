@@ -10,6 +10,7 @@ export interface ProblemInfo {
   constraints?: string;
   example_input?: string;
   example_output?: string;
+  preexisting_code?: string;
 }
 
 export interface Solution {
