@@ -480,9 +480,6 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                             </span>
                           </div>
                         </div>
-                        <p className="text-[10px] leading-relaxed text-white/70 truncate mt-1">
-                          Center this window on the primary display.
-                        </p>
                       </div>
                     </div>
 

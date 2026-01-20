@@ -48,6 +48,16 @@ const modelCategories: ModelCategory[] = [
         description: "Prototype"
       },
       {
+        id: "gpt-5.2",
+        name: "gpt-5.2",
+        description: "Default reasoning effort"
+      },
+      {
+        id: "gpt-5.2-thinking",
+        name: "gpt-5.2-thinking",
+        description: "Medium reasoning effort"
+      },
+      {
         id: "o4-mini",
         name: "o4-mini",
         description: "Faster, more cost-effective option"
@@ -109,6 +119,16 @@ const modelCategories: ModelCategory[] = [
         description: "Prototype"
       },
       {
+        id: "gpt-5.2",
+        name: "gpt-5.2",
+        description: "Default reasoning effort"
+      },
+      {
+        id: "gpt-5.2-thinking",
+        name: "gpt-5.2-thinking",
+        description: "Medium reasoning effort"
+      },
+      {
         id: "o4-mini",
         name: "o4-mini",
         description: "Faster, more cost-effective option"
@@ -164,6 +184,16 @@ const modelCategories: ModelCategory[] = [
         id: "gpt-5",
         name: "gpt-5",
         description: "Prototype"
+      },
+      {
+        id: "gpt-5.2",
+        name: "gpt-5.2",
+        description: "Default reasoning effort"
+      },
+      {
+        id: "gpt-5.2-thinking",
+        name: "gpt-5.2-thinking",
+        description: "Medium reasoning effort"
       },
       {
         id: "o4-mini",

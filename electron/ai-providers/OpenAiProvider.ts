@@ -1,6 +1,5 @@
 import { OpenAI } from "openai";
 import { z } from "zod";
-import { zodResponseFormat } from "openai/helpers/zod";
 import { IAiProvider, ProblemInfo, Solution, DebugResult, ApiKeyError } from "./IAiProvider";
 import { API_CONFIG } from "../ConfigHelper";
 import { AppConfig } from "../ConfigHelper";
@@ -8,10 +7,106 @@ import { AppConfig } from "../ConfigHelper";
 export class OpenAiProvider implements IAiProvider {
   private client: OpenAI;
   private config: AppConfig;
+  private lastResponseId?: string;
 
   constructor(client: OpenAI, config: AppConfig) {
     this.client = client;
     this.config = config;
+  }
+
+  private isThinkingVariant(model: string): boolean {
+    return model.endsWith("-thinking");
+  }
+
+  private normalizeModelName(model: string): string {
+    return this.isThinkingVariant(model) ? model.replace(/-thinking$/, "") : model;
+  }
+
+  private buildInputFromMessages(messages: Array<{ role: string; content: any }>): Array<{ role: string; content: Array<{ type: string; text?: string; image_url?: string }> }> {
+    return messages.map((message) => {
+      if (typeof message.content === "string") {
+        return {
+          role: message.role,
+          content: [{ type: "input_text", text: message.content }]
+        };
+      }
+
+      if (Array.isArray(message.content)) {
+        const content = message.content.map((part: any) => {
+          if (part?.type === "text") {
+            return { type: "input_text", text: part.text };
+          }
+          if (part?.type === "image_url") {
+            return { type: "input_image", image_url: part.image_url?.url };
+          }
+          if (part?.type === "input_text" || part?.type === "input_image") {
+            return part;
+          }
+          return { type: "input_text", text: String(part?.text ?? "") };
+        });
+
+        return { role: message.role, content };
+      }
+
+      return {
+        role: message.role,
+        content: [{ type: "input_text", text: String(message.content ?? "") }]
+      };
+    });
+  }
+
+  private buildResponsesParams(model: string, input: any, maxOutputTokens: number, usePreviousResponseId: boolean): any {
+    const normalizedModel = this.normalizeModelName(model);
+    const params: any = {
+      model: normalizedModel,
+      input,
+      max_output_tokens: maxOutputTokens
+    };
+
+    if (this.isThinkingVariant(model)) {
+      params.reasoning = { effort: "medium" };
+    }
+
+    if (usePreviousResponseId && this.lastResponseId) {
+      params.previous_response_id = this.lastResponseId;
+    }
+
+    return params;
+  }
+
+  private getResponseText(response: any): string {
+    if (response?.output_text) {
+      return response.output_text;
+    }
+
+    const content = response?.output?.[0]?.content || [];
+    for (const item of content) {
+      if (item?.type === "output_text" || item?.type === "text") {
+        return item.text || "";
+      }
+    }
+
+    return "";
+  }
+
+  private parseJsonResponse(responseText: string): any {
+    try {
+      return JSON.parse(responseText);
+    } catch (error) {
+      const startIndex = responseText.indexOf("{");
+      const endIndex = responseText.lastIndexOf("}");
+      if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+        const jsonBlock = responseText.slice(startIndex, endIndex + 1);
+        return JSON.parse(jsonBlock);
+      }
+      throw new Error("OpenAI response was not valid JSON.");
+    }
+  }
+
+  private recordResponseId(response: any): void {
+    if (response?.id) {
+      this.lastResponseId = response.id;
+    }
   }
 
   private handleError(error: any): never {
@@ -23,6 +118,10 @@ export class OpenAiProvider implements IAiProvider {
     }
     if (error?.status === 500) {
       throw new Error("OpenAI server error. Please try again later.");
+    }
+    if (error?.message?.includes("unknown") || error?.message?.includes("reasoning")) {
+      console.warn("Reasoning parameter may not be supported for this endpoint:", error?.message);
+      throw new Error(`API error: ${error?.message || "Unknown error. The reasoning parameter may not be supported for this model or endpoint."}`);
     }
     throw error;
   }
@@ -46,40 +145,31 @@ export class OpenAiProvider implements IAiProvider {
         }
       ];
 
-      const ProblemExtraction = z.object({
+      const ProblemExtractionSchema = z.object({
         problem_statement: z.string(),
-        constraints: z.string().optional(),
-        example_input: z.string().optional(),
-        example_output: z.string().optional(),
-        preexisting_code: z.string().optional()
+        constraints: z.string().nullable().optional(),
+        example_input: z.string().nullable().optional(),
+        example_output: z.string().nullable().optional(),
+        preexisting_code: z.string().nullable().optional()
       });
 
-      const options = signal ? { signal } : {};
-      const extraction = await this.client.beta.chat.completions.parse({
-        model: this.config.extractionModel || "gpt-4o",
-        messages: messages,
-        response_format: zodResponseFormat(
-          z.object({
-            problem_statement: z.string(),
-            constraints: z.string().optional(),
-            example_input: z.string().optional(),
-            example_output: z.string().optional(),
-            preexisting_code: z.string().optional()
-          }),
-          "problem_info"
-        ),
-        max_completion_tokens: API_CONFIG.maxTokens.extraction,
-      }, options);
+      const model = this.config.extractionModel || "gpt-4o";
+      const input = this.buildInputFromMessages(messages);
+      const extraction = await this.client.responses.create(
+        this.buildResponsesParams(model, input, API_CONFIG.maxTokens.extraction, false),
+        signal ? { signal } : undefined
+      );
 
-      const parsed = extraction.choices[0].message.parsed
+      const responseText = this.getResponseText(extraction);
+      const parsed = ProblemExtractionSchema.parse(this.parseJsonResponse(responseText));
       // console.log("Problem info parsed", parsed)
 
       return {
         problem_statement: parsed.problem_statement,
-        constraints: parsed.constraints,
-        example_input: parsed.example_input,
-        example_output: parsed.example_output,
-        preexisting_code: parsed.preexisting_code
+        constraints: parsed.constraints ?? undefined,
+        example_input: parsed.example_input ?? undefined,
+        example_output: parsed.example_output ?? undefined,
+        preexisting_code: parsed.preexisting_code ?? undefined
       }
     } catch (error) {
       this.handleError(error);
@@ -90,7 +180,7 @@ export class OpenAiProvider implements IAiProvider {
     console.log("generateSolution received additionalText:", additionalText)
     try {
       var promptText = `
-Generate a detailed solution for the following coding problem:
+Generate a detailed solution for the following coding problem and return JSON only.
 
 PROBLEM STATEMENT:
 ${problemInfo.problem_statement}
@@ -109,11 +199,11 @@ ${problemInfo.example_input || "No example input provided."}
 
 LANGUAGE: ${language}
 
-I need the response in the following format:
-1. Code: A clean, simple, readable implementation (it's ok to use python built-in libraries if it makes sense like collections,itertools,heapq) in ${language}.
-2. Your Thoughts: List of key insights and reasoning behind the approach -- I need to explain simply to the engineer asking me this question.
-3. Time complexity: O(X) with a simple but thorough explanation (at least 2 sentences). Try to breakdown the answer in math,  like if there's a recurrence relation explain it so I can show my work.
-4. Space complexity: O(X) with a simple but thorough explanation (at least 2 sentences).  Try to breakdown the answer in math,  like if there's a recurrence relation explain it so I can show my work.
+Return JSON with these fields only:
+- code (string): Clean, simple, readable implementation in ${language}. Use built-in libs if helpful.
+- thoughts (array of strings): Key insights and reasoning behind the approach.
+- time_complexity (string): O(X) with at least 2 sentences explaining the math.
+- space_complexity (string): O(X) with at least 2 sentences explaining the math.
 
 <code_notes>
 I'm going into a coding interview (potentially an incremental problem). Give simple, short, and optimized code
@@ -129,7 +219,7 @@ If there's already existing code take that into account, such as for reuse.
 </complexity_notes>
 
 Your solution should be efficient, well-commented, and handle edge cases.
-Use [section]: to denote sections, do not use ** since this is a coding interview and I have limited time to read, and also this is ASCII not markdown.
+Return JSON only. No extra text.
 
 `;
 
@@ -144,18 +234,18 @@ Use [section]: to denote sections, do not use ** since this is a coding intervie
         space_complexity: z.string()
       });
 
-      const options = signal ? { signal } : {};
-      const solutionResponse = await this.client.beta.chat.completions.parse({
-        model: this.config.solutionModel || "gpt-4o",
-        messages: [
-          { role: "system", content: "You are an expert coding interview assistant. Provide clear, optimal solutions with detailed explanations." },
-          { role: "user", content: promptText }
-        ],
-        response_format: zodResponseFormat(SolutionSchema, "solution_result"),
-        max_completion_tokens: API_CONFIG.maxTokens.solution,
-      }, options);
+      const model = this.config.solutionModel || "gpt-4o";
+      const input = this.buildInputFromMessages([
+        { role: "system", content: "You are an expert coding interview assistant. Provide clear, optimal solutions with detailed explanations." },
+        { role: "user", content: promptText }
+      ]);
+      const solutionResponse = await this.client.responses.create(
+        this.buildResponsesParams(model, input, API_CONFIG.maxTokens.solution, false),
+        signal ? { signal } : undefined
+      );
 
-      const parsed = solutionResponse.choices[0].message.parsed;
+      const responseText = this.getResponseText(solutionResponse);
+      const parsed = SolutionSchema.parse(this.parseJsonResponse(responseText));
 
       return {
         code: parsed.code,
@@ -171,7 +261,7 @@ Use [section]: to denote sections, do not use ** since this is a coding intervie
   async debugSolution(problemInfo: ProblemInfo, screenshots: { data: string; }[], language: string, signal?: AbortSignal, additionalText?: string): Promise<DebugResult> {
     console.log("debugSolution received additionalText:", additionalText)
     try {
-      const systemDebugPrompt = `You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
+      const systemDebugPrompt = `You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help. Return JSON only.
 
 Your response MUST include
 - issues identified (or state "None" if there are none): List each issue as a bullet point with a clear explanation
@@ -180,7 +270,14 @@ Your response MUST include
 -  Explanation of Changes Needed: Provide a clear explanation of why the changes are needed
 - Key Points: Summary bullet points of the most important takeaways
 
-Use [section]: to denote sections, do not use ** since this is a coding interview and I have limited time to read, and also this is ASCII not markdown.
+Return JSON with these fields only:
+- code (string)
+- debug_analysis (string)
+- thoughts (array of strings)
+- time_complexity (string)
+- space_complexity (string)
+
+Return JSON only. No extra text.
 `;
       const userDebugPrompt = `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language} and need help debugging the current code I have against the requirements. I need help...${additionalText ? `\n\nADDITIONAL CONTEXT FROM USER:\n${additionalText}`: ""}${problemInfo.preexisting_code ? `\n\nPRE-EXISTING CODE:\n${problemInfo.preexisting_code}` : ""}`;
 
@@ -206,15 +303,15 @@ Use [section]: to denote sections, do not use ** since this is a coding intervie
         space_complexity: z.string().optional()
       });
 
-      const options = signal ? { signal } : {};
-      const debugResponse = await this.client.beta.chat.completions.parse({
-        model: this.config.debuggingModel || "gpt-4o",
-        messages,
-        response_format: zodResponseFormat(DebugSchema, "debug_result"),
-        max_completion_tokens: API_CONFIG.maxTokens.debugging,
-      }, options);
+      const model = this.config.debuggingModel || "gpt-4o";
+      const input = this.buildInputFromMessages(messages);
+      const debugResponse = await this.client.responses.create(
+        this.buildResponsesParams(model, input, API_CONFIG.maxTokens.debugging, false),
+        signal ? { signal } : undefined
+      );
 
-      const parsed = debugResponse.choices[0].message.parsed;
+      const responseText = this.getResponseText(debugResponse);
+      const parsed = DebugSchema.parse(this.parseJsonResponse(responseText));
       console.log("debug Response parsed", parsed);
 
       return {
@@ -261,12 +358,14 @@ Use [section]: to denote sections, do not use ** since this is a coding intervie
       ? transformed
       : [{ role: "system", content: "You are a helpful AI assistant." }, ...transformed]
 
-    const completion = await this.client.chat.completions.create({
-      model: this.config.solutionModel || "gpt-4o",
-      messages: conversation as any
-    } as any)
+    const model = this.config.solutionModel || "gpt-4o";
+    const input = this.buildInputFromMessages(conversation as any);
+    const completion = await this.client.responses.create(
+      this.buildResponsesParams(model, input, API_CONFIG.maxTokens.solution, true)
+    );
+    this.recordResponseId(completion);
 
-    const reply = completion.choices?.[0]?.message?.content || ""
+    const reply = this.getResponseText(completion);
     return { role: "assistant", content: reply }
   }
 }
